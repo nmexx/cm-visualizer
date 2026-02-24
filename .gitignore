@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Electron build output
+dist/
+release/
+build/
+
+# Test coverage
+coverage/
+
+# SQLite databases (user data is stored in the OS app data folder,
+# not in the project directory)
+*.db
+*.sqlite
+*.sqlite3
+
+# CSV sales data (personal / private data – see Data/ folder)
+# Keep the folder itself by committing the .gitkeep placeholder
+Data/*.csv
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor directories
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Temporary files
+*.tmp
+*.temp
