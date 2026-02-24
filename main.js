@@ -2,9 +2,22 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 const chokidar = require('chokidar');
+const XLSX = require('xlsx');
 const { sanitizeDate } = require('./lib/parser');
 const { importCSVFile } = require('./lib/importer');
 const { importPurchasedCSVFile } = require('./lib/purchaseImporter');
+const {
+  computeProfitLoss, computeInventory, computeRepeatBuyers,
+  computeSetROI, computeFoilPremium, computeTimeToSell,
+} = require('./lib/analytics');
+
+// Auto-updater (gracefully no-ops in development/unsigned builds)
+let autoUpdater = null;
+try {
+  autoUpdater = require('electron-updater').autoUpdater;
+  autoUpdater.autoDownload = false;
+  autoUpdater.logger = null;
+} catch { /* not available in dev */ }
 
 let mainWindow;
 let db;
@@ -387,6 +400,48 @@ function getPurchaseStats(filters = {}) {
   return { summary, spendByDay, spendByMonth, topSellers, topBoughtCards, byRarity, byCountry, allPurchases, missingMonths };
 }
 
+// ─── Analytics (pure-function analytics via lib/analytics.js) ────────────────
+function getAnalyticsData(filters = {}) {
+  const dateFrom  = sanitizeDate(filters.dateFrom) ?? null;
+  const dateTo    = sanitizeDate(filters.dateTo)   ?? null;
+  const dateToEnd = dateTo ? dateTo + ' 23:59:59'  : null;
+
+  const soldItems   = db.prepare(`
+    SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price, i.is_foil
+    FROM order_items i
+    JOIN orders o ON o.order_id = i.order_id
+    WHERE o.date_of_purchase >= COALESCE(?, o.date_of_purchase)
+      AND o.date_of_purchase <= COALESCE(?, o.date_of_purchase)
+  `).all(dateFrom, dateToEnd);
+
+  const boughtItems = db.prepare(`
+    SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price, i.is_foil
+    FROM purchase_items i
+    JOIN purchases p ON p.order_id = i.order_id
+    WHERE p.date_of_purchase >= COALESCE(?, p.date_of_purchase)
+      AND p.date_of_purchase <= COALESCE(?, p.date_of_purchase)
+  `).all(dateFrom, dateToEnd);
+
+  const allSoldItems   = db.prepare(`SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity, o.date_of_purchase AS date_of_sale FROM order_items i JOIN orders o ON o.order_id = i.order_id`).all();
+  const allBoughtItems = db.prepare(`SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity, p.date_of_purchase FROM purchase_items i JOIN purchases p ON p.order_id = i.order_id`).all();
+
+  const allOrders = db.prepare(`
+    SELECT username, buyer_name, merchandise_value, article_count
+    FROM orders
+    WHERE date_of_purchase >= COALESCE(?, date_of_purchase)
+      AND date_of_purchase <= COALESCE(?, date_of_purchase)
+  `).all(dateFrom, dateToEnd);
+
+  return {
+    profitLoss:    computeProfitLoss(soldItems, boughtItems),
+    inventory:     computeInventory(allBoughtItems, allSoldItems),
+    repeatBuyers:  computeRepeatBuyers(allOrders),
+    setROI:        computeSetROI(allSoldItems, allBoughtItems),
+    foilPremium:   computeFoilPremium(soldItems),
+    timeToSell:    computeTimeToSell(allBoughtItems, allSoldItems),
+  };
+}
+
 // ─── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -413,6 +468,16 @@ app.whenReady().then(() => {
   // Restore auto-watch if a folder was previously configured
   const savedFolder = db.prepare(`SELECT value FROM settings WHERE key = 'csv_folder'`).get();
   if (savedFolder?.value) {startWatcher(savedFolder.value);}
+
+  // Auto-updater: check on startup in production
+  if (autoUpdater && app.isPackaged) {
+    autoUpdater.checkForUpdates().catch(() => {});
+    autoUpdater.on('update-available',    () => mainWindow?.webContents.send('update-available'));
+    autoUpdater.on('update-not-available',() => mainWindow?.webContents.send('update-not-available'));
+    autoUpdater.on('error',               () => mainWindow?.webContents.send('update-error'));
+    autoUpdater.on('download-progress', p => mainWindow?.webContents.send('update-progress', Math.round(p.percent)));
+    autoUpdater.on('update-downloaded',  () => mainWindow?.webContents.send('update-downloaded'));
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {createWindow();}
@@ -560,6 +625,58 @@ ipcMain.handle('export-csv', async (_, type) => {
     rows.map(r => Object.values(r).map(v => String(v ?? '').replace(/;/g, ',')).join(';')).join('\n');
   fs.writeFileSync(result.filePath, csv, 'utf-8');
   return { ok: true, path: result.filePath };
+});
+
+ipcMain.handle('get-analytics', async (_, filters) => {
+  return getAnalyticsData(filters || {});
+});
+
+ipcMain.handle('export-xlsx', async (_, { type, rows }) => {
+  if (!rows || !rows.length) { return { ok: false, message: 'No data to export' }; }
+  const date = new Date().toISOString().split('T')[0];
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export as Excel',
+    defaultPath: `mtg-${type}-${date}.xlsx`,
+    filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+  });
+  if (result.canceled) { return null; }
+  const ws   = XLSX.utils.json_to_sheet(rows);
+  const wb   = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, type);
+  XLSX.writeFile(wb, result.filePath);
+  return { ok: true, path: result.filePath };
+});
+
+ipcMain.handle('save-filter-preset', async (_, { name, from, to }) => {
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`)
+    .run('preset_' + name, JSON.stringify({ from, to }));
+  return { ok: true };
+});
+
+ipcMain.handle('get-filter-presets', async () => {
+  const rows = db.prepare(`SELECT key, value FROM settings WHERE key LIKE 'preset_%'`).all();
+  return rows.map(r => ({ name: r.key.slice(7), ...JSON.parse(r.value) }));
+});
+
+ipcMain.handle('delete-filter-preset', async (_, name) => {
+  db.prepare(`DELETE FROM settings WHERE key = ?`).run('preset_' + name);
+  return { ok: true };
+});
+
+ipcMain.handle('check-for-update', async () => {
+  if (!autoUpdater) { return { status: 'unavailable' }; }
+  if (!app.isPackaged) { return { status: 'dev' }; }
+  try { await autoUpdater.checkForUpdates(); return { status: 'checking' }; }
+  catch (e) { return { status: 'error', message: e.message }; }
+});
+
+ipcMain.handle('install-update', async () => {
+  if (autoUpdater) { autoUpdater.downloadUpdate().catch(() => {}); }
+});
+
+ipcMain.handle('set-theme', async (_, theme) => {
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('theme', ?)`).run(theme);
+  return { ok: true };
 });
 
 ipcMain.handle('get-settings', async () => {

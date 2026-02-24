@@ -646,3 +646,146 @@ body {
   background: linear-gradient(to right, var(--gold-dim), transparent);
   max-width: 300px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIGHT THEME
+══════════════════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg:         #f4f5f7;
+  --bg2:        #ffffff;
+  --bg3:        #edf0f5;
+  --border:     #d0d7e3;
+  --gold:       #a07a10;
+  --gold-light: #b8900e;
+  --gold-dim:   #c9a227;
+  --text:       #1a233a;
+  --text-dim:   #5a6a86;
+  --text-bright:#0d1526;
+  --green:      #18904a;
+  --red:        #c0392b;
+  --blue:       #1a69cc;
+  --purple:     #7d3c9b;
+  --foil:       #1d9baf;
+  --rare:       #a07a10;
+  --mythic:     #b85515;
+  --uncommon:   #546e8a;
+  --common:     #6b7a8a;
+  --glow: none;
+}
+
+[data-theme="light"] #topbar,
+[data-theme="light"] #statusbar,
+[data-theme="light"] #sidebar { background: #ffffff; }
+
+[data-theme="light"] .nav-btn:hover { background: #edf0f5; }
+[data-theme="light"] .nav-btn.active { background: rgba(160,122,16,0.1); }
+
+[data-theme="light"] .data-table tr:hover td { background: rgba(160,122,16,0.05); }
+
+[data-theme="light"] #toast { background: #ffffff; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   DRAG-DROP OVERLAY
+══════════════════════════════════════════════════════════════════════ */
+#drag-overlay {
+  position: fixed; inset: 0;
+  background: rgba(8,11,18,0.88);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+  border: 3px dashed var(--gold-dim);
+  pointer-events: none;
+}
+
+#drag-overlay.active { display: flex; }
+
+.drag-inner { text-align: center; }
+.drag-icon { font-size: 72px; color: var(--gold); margin-bottom: 16px; line-height: 1; }
+.drag-text {
+  font-family: 'Cinzel', serif;
+  font-size: 18px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--gold-light);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   UPDATE BANNER
+══════════════════════════════════════════════════════════════════════ */
+#update-banner {
+  background: rgba(61,142,240,0.1);
+  border-bottom: 1px solid rgba(61,142,240,0.3);
+  padding: 7px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.update-btn { font-size: 11px; padding: 3px 10px; }
+.update-dismiss { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; margin-left: auto; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   DATE RANGE PRESETS
+══════════════════════════════════════════════════════════════════════ */
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.preset-btn {
+  font-size: 11px;
+  padding: 4px 8px;
+  min-width: unset;
+  letter-spacing: 0;
+}
+
+.preset-saved-wrap { display: flex; align-items: center; gap: 4px; margin-left: 4px; }
+
+.preset-select {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  height: 28px;
+}
+
+.preset-select:focus { outline: none; border-color: var(--gold-dim); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   ICON BUTTON (theme toggle)
+══════════════════════════════════════════════════════════════════════ */
+.btn.icon-btn { padding: 4px 8px; font-size: 16px; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   P&L — profit / loss cell coloring
+══════════════════════════════════════════════════════════════════════ */
+.profit-pos { color: var(--green); }
+.profit-neg { color: var(--red); }
+.margin-pos { color: var(--green); font-size: 11px; }
+.margin-neg { color: var(--red);   font-size: 11px; }
+.days-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.days-fast   { background: rgba(46,204,113,0.12); color: var(--green); }
+.days-medium { background: rgba(201,162,39,0.12); color: var(--gold-light); }
+.days-slow   { background: rgba(231,76,60,0.12);  color: var(--red); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   INVENTORY search input tweak
+══════════════════════════════════════════════════════════════════════ */
+.kpi-value.purple { color: var(--purple); }
+

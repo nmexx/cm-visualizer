@@ -15,6 +15,7 @@ const GOLD_PALETTE = [
 let charts       = {};
 let currentData  = null;
 let purchaseData = null;
+let analyticsData = null;
 let filters      = {};
 let orderPage    = 1;
 const PAGE_SIZE  = 50;
@@ -49,6 +50,11 @@ function fmt(n) {
 
 function fmtNum(n) {
   return (+n || 0).toLocaleString();
+}
+
+function esc(s) {
+  if (s === undefined || s === null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function rarityBadge(r) {
@@ -529,12 +535,14 @@ document.getElementById('btn-import-purchases').addEventListener('click', async 
 document.getElementById('btn-apply-filter').addEventListener('click', () => {
   loadData();
   loadPurchaseData();
+  loadAnalyticsData();
 });
 document.getElementById('btn-clear-filter').addEventListener('click', () => {
   document.getElementById('filter-from').value = '';
   document.getElementById('filter-to').value   = '';
   loadData();
   loadPurchaseData();
+  loadAnalyticsData();
 });
 
 /* ─── Export buttons ──────────────────────────────────────────────────────── */
@@ -579,6 +587,7 @@ document.getElementById('btn-clear-db').addEventListener('click', async () => {
 window.mtg.onAutoImport(data => {
   toast(`Auto-imported: ${data.file} (+${data.inserted} orders)`);
   loadData();
+  loadAnalyticsData();
 });
 
 /* ─── Init ─────────────────────────────────────────────────────────────────── */
@@ -594,7 +603,364 @@ async function init() {
   document.getElementById('setting-db-path').textContent = dbPath || '';
   document.getElementById('db-path-status').textContent  = dbPath ? dbPath.split(/[\\/]/).pop() : '';
 
-  await Promise.all([loadData(), loadPurchaseData()]);
+  // Restore theme
+  const savedTheme = settings.theme || 'dark';
+  applyTheme(savedTheme);
+
+  // Load filter presets
+  await refreshPresetSelect();
+
+  await Promise.all([loadData(), loadPurchaseData(), loadAnalyticsData()]);
 }
 
 init();
+
+/* ─── Analytics loading ────────────────────────────────────────────────────── */
+async function loadAnalyticsData() {
+  const f = buildFilters();
+  const data = await window.mtg.getAnalytics(f);
+  analyticsData = data;
+  renderAnalytics(data);
+  renderRepeatBuyers(data.repeatBuyers);
+  renderSetROI(data.setROI);
+  renderFoilPremium(data.foilPremium);
+}
+
+/* ─── Render P&L page ──────────────────────────────────────────────────────── */
+function renderAnalytics(d) {
+  if (!d) return;
+  const { profitLoss, timeToSell } = d;
+
+  const empty = document.getElementById('pnl-empty-state');
+  const dash  = document.getElementById('pnl-dashboard');
+  if (!profitLoss || profitLoss.length === 0) {
+    if (empty) empty.style.display = '';
+    if (dash)  dash.style.display  = 'none';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  if (dash)  dash.style.display  = '';
+
+  const totalRevenue  = profitLoss.reduce((s, r) => s + (r.total_revenue  || 0), 0);
+  const totalCost     = profitLoss.reduce((s, r) => s + (r.total_cost     || 0), 0);
+  const totalProfit   = profitLoss.reduce((s, r) => s + (r.profit         || 0), 0);
+  const profitable    = profitLoss.filter(r => (r.profit || 0) > 0).length;
+  const profitPct     = profitLoss.length ? Math.round(profitable / profitLoss.length * 100) : 0;
+
+  const kpiGrid = document.getElementById('pnl-kpi-grid');
+  if (kpiGrid) {
+    kpiGrid.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${fmt(totalRevenue)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Cost</div><div class="kpi-value">${fmt(totalCost)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Profit</div><div class="kpi-value ${totalProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${fmt(totalProfit)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Cards Profitable</div><div class="kpi-value">${profitPct}%</div></div>
+    `;
+  }
+
+  const tbody = document.querySelector('#table-pnl tbody');
+  if (tbody) {
+    tbody.innerHTML = profitLoss.map(r => `
+      <tr>
+        <td>${esc(r.card_name)}</td>
+        <td>${esc(r.set_name || '—')}</td>
+        <td>${r.qty_sold || 0}</td>
+        <td>${fmt(r.total_revenue)}</td>
+        <td>${fmt(r.total_cost)}</td>
+        <td class="${(r.profit || 0) >= 0 ? 'profit-pos' : 'profit-neg'}">${fmt(r.profit)}</td>
+        <td class="${(r.margin_pct || 0) >= 0 ? 'margin-pos' : 'margin-neg'}">${r.margin_pct != null ? r.margin_pct.toFixed(1) + '%' : '—'}</td>
+      </tr>`).join('');
+  }
+
+  // Time to sell table
+  const ttsTbody = document.querySelector('#table-time-to-sell tbody');
+  if (ttsTbody && timeToSell && timeToSell.length > 0) {
+    ttsTbody.innerHTML = timeToSell.map(r => {
+      const d = r.days_to_sell;
+      const cls = d === null ? '' : d < 14 ? 'days-fast' : d <= 60 ? 'days-medium' : 'days-slow';
+      const label = d === null ? '—' : `${d}d`;
+      return `<tr>
+        <td>${esc(r.card_name)}</td>
+        <td>${esc(r.set_name || '—')}</td>
+        <td><span class="days-badge ${cls}">${label}</span></td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+/* ─── Render Inventory page ────────────────────────────────────────────────── */
+function renderInventory(inv) {
+  if (!inv) return;
+
+  const empty = document.getElementById('inventory-empty-state');
+  const dash  = document.getElementById('inventory-dashboard');
+  if (!inv || inv.length === 0) {
+    if (empty) empty.style.display = '';
+    if (dash)  dash.style.display  = 'none';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  if (dash)  dash.style.display  = '';
+
+  const totalOnHand = inv.reduce((s, r) => s + (r.qty_on_hand || 0), 0);
+  const totalValue  = inv.reduce((s, r) => s + (r.estimated_value || 0), 0);
+  const unique      = inv.length;
+  const avgBuy      = totalOnHand > 0 ? inv.reduce((s, r) => s + (r.avg_buy_price || 0) * (r.qty_on_hand || 0), 0) / totalOnHand : 0;
+
+  const kpiGrid = document.getElementById('inventory-kpi-grid');
+  if (kpiGrid) {
+    kpiGrid.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Cards on Hand</div><div class="kpi-value">${totalOnHand}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Est. Portfolio Value</div><div class="kpi-value purple">${fmt(totalValue)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Unique Cards</div><div class="kpi-value">${unique}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Avg Buy Price</div><div class="kpi-value">${fmt(avgBuy)}</div></div>
+    `;
+  }
+
+  const searchTerm = (document.getElementById('inventory-search')?.value || '').toLowerCase();
+  const filtered   = searchTerm ? inv.filter(r => r.card_name.toLowerCase().includes(searchTerm)) : inv;
+
+  const tbody = document.querySelector('#table-inventory tbody');
+  if (tbody) {
+    tbody.innerHTML = filtered.map(r => `
+      <tr>
+        <td>${esc(r.card_name)}</td>
+        <td>${esc(r.set_name || '—')}</td>
+        <td>${r.qty_bought || 0}</td>
+        <td>${r.qty_sold || 0}</td>
+        <td>${r.qty_on_hand || 0}</td>
+        <td>${fmt(r.avg_buy_price)}</td>
+        <td>${fmt(r.estimated_value)}</td>
+      </tr>`).join('');
+  }
+}
+
+/* ─── Render Repeat Buyers panel ──────────────────────────────────────────── */
+function renderRepeatBuyers(rb) {
+  const panel = document.getElementById('repeat-buyers-panel');
+  if (!rb || !panel) return;
+  panel.style.display = '';
+
+  const kpis = document.getElementById('repeat-buyers-kpis');
+  if (kpis) {
+    kpis.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Unique Buyers</div><div class="kpi-value">${rb.total || 0}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Repeat Buyers</div><div class="kpi-value">${rb.repeatCount || 0}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Repeat Buyer %</div><div class="kpi-value">${rb.repeatPct != null ? rb.repeatPct.toFixed(1) + '%' : '—'}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Repeat Revenue %</div><div class="kpi-value">${rb.repeatRevenuePct != null ? rb.repeatRevenuePct.toFixed(1) + '%' : '—'}</div></div>
+    `;
+  }
+
+  // Buyer distribution donut chart
+  if (rb.distribution) {
+    const dist = rb.distribution;
+    const labels = Object.keys(dist);
+    const vals   = Object.values(dist);
+    doughnutChart('chart-buyer-distribution', labels, vals);
+  }
+
+  const tbody = document.querySelector('#table-repeat-buyers tbody');
+  if (tbody && rb.buyers) {
+    tbody.innerHTML = rb.buyers.map(b => `
+      <tr>
+        <td>${esc(b.buyer)}</td>
+        <td>${b.order_count || 0}</td>
+        <td>${fmt(b.total_spent)}</td>
+        <td>${fmt(b.avg_order_value)}</td>
+      </tr>`).join('');
+  }
+}
+
+/* ─── Render Set ROI table ─────────────────────────────────────────────────── */
+function renderSetROI(roi) {
+  const tbody = document.querySelector('#table-set-roi tbody');
+  if (!tbody || !roi) return;
+  tbody.innerHTML = roi.map(r => `
+    <tr>
+      <td>${esc(r.set_name)}</td>
+      <td>${r.cards_sold || 0}</td>
+      <td>${fmt(r.avg_buy_price)}</td>
+      <td>${fmt(r.avg_sell_price)}</td>
+      <td class="${(r.roi_pct || 0) >= 0 ? 'profit-pos' : 'profit-neg'}">${r.roi_pct != null ? r.roi_pct.toFixed(1) + '%' : '—'}</td>
+    </tr>`).join('');
+}
+
+/* ─── Render Foil Premium table ────────────────────────────────────────────── */
+function renderFoilPremium(fp) {
+  const tbody = document.querySelector('#table-foil-premium tbody');
+  if (!tbody || !fp) return;
+  tbody.innerHTML = fp.map(r => `
+    <tr>
+      <td>${esc(r.card_name)}</td>
+      <td>${fmt(r.avg_normal_price)}</td>
+      <td>${fmt(r.avg_foil_price)}</td>
+      <td>${r.foil_premium_pct != null ? r.foil_premium_pct.toFixed(1) + '%' : '—'}</td>
+    </tr>`).join('');
+}
+
+/* ─── Theme helpers ─────────────────────────────────────────────────────────── */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn1  = document.getElementById('btn-theme-toggle');
+  const btn2  = document.getElementById('btn-toggle-theme');
+  const label = theme === 'light' ? '🌙' : '☀';
+  if (btn1) btn1.textContent = label;
+  if (btn2) btn2.textContent = theme === 'light' ? 'Switch to Dark Theme' : 'Switch to Light Theme';
+}
+
+(function setupTheme() {
+  async function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    await window.mtg.setTheme(next);
+  }
+  document.getElementById('btn-theme-toggle')?.addEventListener('click', toggleTheme);
+  document.getElementById('btn-toggle-theme')?.addEventListener('click', toggleTheme);
+})();
+
+/* ─── Drag-drop CSV import ──────────────────────────────────────────────────── */
+(function setupDragDrop() {
+  const overlay = document.getElementById('drag-overlay');
+  document.addEventListener('dragover', e => {
+    e.preventDefault();
+    if (overlay) overlay.classList.add('active');
+  });
+  document.addEventListener('dragleave', e => {
+    if (!e.relatedTarget && overlay) overlay.classList.remove('active');
+  });
+  document.addEventListener('drop', async e => {
+    e.preventDefault();
+    if (overlay) overlay.classList.remove('active');
+    const files = Array.from(e.dataTransfer.files)
+      .filter(f => f.name.toLowerCase().endsWith('.csv'))
+      .map(f => f.path);
+    if (!files.length) { toast('Drop CSV files to import'); return; }
+    let totalInserted = 0;
+    for (const fp of files) {
+      const res = await window.mtg.importFile(fp).catch(() => null);
+      if (res?.inserted) totalInserted += res.inserted;
+    }
+    toast(`Imported ${files.length} file(s) (+${totalInserted} orders)`);
+    loadData();
+    loadAnalyticsData();
+  });
+})();
+
+/* ─── Date range presets ────────────────────────────────────────────────────── */
+(function setupPresetBtns() {
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const days = +btn.dataset.days;
+      const to   = new Date();
+      const from = days === 0 ? new Date(to.getFullYear(), 0, 1)
+                              : new Date(Date.now() - days * 86_400_000);
+      document.getElementById('filter-from').value = from.toISOString().split('T')[0];
+      document.getElementById('filter-to').value   = to.toISOString().split('T')[0];
+      loadData();
+      loadPurchaseData();
+      loadAnalyticsData();
+    });
+  });
+})();
+
+/* ─── Saved filter presets ──────────────────────────────────────────────────── */
+async function refreshPresetSelect() {
+  const presets = await window.mtg.getFilterPresets().catch(() => []);
+  const sel = document.getElementById('preset-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">★ Presets</option>' +
+    presets.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+}
+
+(function setupFilterPresets() {
+  document.getElementById('btn-save-preset')?.addEventListener('click', () => {
+    const modal = document.getElementById('preset-modal');
+    if (modal) { modal.classList.add('show'); document.getElementById('preset-name-input').value = ''; }
+  });
+  document.getElementById('btn-confirm-save-preset')?.addEventListener('click', async () => {
+    const name = document.getElementById('preset-name-input')?.value.trim();
+    if (!name) return;
+    const from = document.getElementById('filter-from').value;
+    const to   = document.getElementById('filter-to').value;
+    await window.mtg.saveFilterPreset({ name, from, to });
+    document.getElementById('preset-modal')?.classList.remove('show');
+    await refreshPresetSelect();
+    toast(`Preset saved: ${name}`);
+  });
+  document.getElementById('btn-cancel-save-preset')?.addEventListener('click', () => {
+    document.getElementById('preset-modal')?.classList.remove('show');
+  });
+  document.getElementById('preset-select')?.addEventListener('change', async e => {
+    const name = e.target.value;
+    if (!name) return;
+    const presets = await window.mtg.getFilterPresets().catch(() => []);
+    const p = presets.find(x => x.name === name);
+    if (p) {
+      document.getElementById('filter-from').value = p.from || '';
+      document.getElementById('filter-to').value   = p.to   || '';
+      loadData();
+      loadPurchaseData();
+      loadAnalyticsData();
+    }
+  });
+})();
+
+/* ─── XLSX export handlers ──────────────────────────────────────────────────── */
+(function setupXlsxExports() {
+  async function xlsxExport(btnId, type, getRows) {
+    document.getElementById(btnId)?.addEventListener('click', async () => {
+      const rows = getRows();
+      if (!rows || !rows.length) { toast('No data to export'); return; }
+      const r = await window.mtg.exportXlsx({ type, rows });
+      if (r?.ok) toast('Exported: ' + r.path.split(/[\\/]/).pop());
+      else if (r?.error) toast('Export failed: ' + r.error);
+    });
+  }
+
+  xlsxExport('btn-export-cards-xlsx',     'top-cards',    () => currentData?.topCards);
+  xlsxExport('btn-export-orders-xlsx',    'orders',       () => currentData?.orders);
+  xlsxExport('btn-export-purchases-xlsx', 'purchases',    () => purchaseData?.topCards);
+  xlsxExport('btn-export-pnl-xlsx',       'pnl',          () => analyticsData?.profitLoss);
+  xlsxExport('btn-export-inventory-xlsx', 'inventory',    () => analyticsData?.inventory);
+})();
+
+/* ─── Inventory search ──────────────────────────────────────────────────────── */
+document.getElementById('inventory-search')?.addEventListener('input', () => {
+  if (analyticsData?.inventory) renderInventory(analyticsData.inventory);
+});
+
+/* ─── Auto-update UI ────────────────────────────────────────────────────────── */
+(function setupAutoUpdate() {
+  window.mtg.onUpdateAvailable?.(() => {
+    const banner = document.getElementById('update-banner');
+    if (banner) banner.style.display = 'flex';
+    const st = document.getElementById('update-status');
+    if (st) st.textContent = 'New version available — downloading…';
+  });
+  window.mtg.onUpdateDownloaded?.(() => {
+    const st = document.getElementById('update-status');
+    if (st) st.textContent = 'Update ready to install. Restart to apply.';
+  });
+  document.getElementById('btn-install-update')?.addEventListener('click', () => {
+    window.mtg.installUpdate();
+  });
+  document.getElementById('btn-dismiss-update')?.addEventListener('click', () => {
+    const banner = document.getElementById('update-banner');
+    if (banner) banner.style.display = 'none';
+  });
+  document.getElementById('btn-check-update')?.addEventListener('click', async () => {
+    const st = document.getElementById('update-status');
+    if (st) st.textContent = 'Checking…';
+    const r = await window.mtg.checkForUpdate();
+    if (st) {
+      st.textContent = r?.status === 'dev'       ? 'Running in development mode' :
+                       r?.status === 'checking'  ? 'Check initiated…'            :
+                       r?.status === 'unavailable'? 'Already up to date'         :
+                       r?.status || 'Unknown status';
+    }
+  });
+
+  // Show current version in settings
+  const verEl = document.getElementById('app-version');
+  if (verEl) window.mtg.getSettings().then(s => { if (s?.version) verEl.textContent = s.version; });
+})();

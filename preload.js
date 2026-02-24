@@ -10,11 +10,28 @@ contextBridge.exposeInMainWorld('mtg', {
   importPurchaseFile:   ()         => ipcRenderer.invoke('import-purchase-file'),
   importPurchaseFolder: (folder)   => ipcRenderer.invoke('import-purchase-folder', folder),
   getPurchaseStats:     (filters)  => ipcRenderer.invoke('get-purchase-stats', filters),
-  // Shared
+  // Analytics (P&L, Inventory, Repeat Buyers, Set ROI, Foil Premium, Time-to-sell)
+  getAnalytics:         (filters)  => ipcRenderer.invoke('get-analytics', filters),
+  // Export
   exportCsv:            (type)     => ipcRenderer.invoke('export-csv', type),
+  exportXlsx:           (payload)  => ipcRenderer.invoke('export-xlsx', payload),
+  // Filter presets
+  saveFilterPreset:     (preset)   => ipcRenderer.invoke('save-filter-preset', preset),
+  getFilterPresets:     ()         => ipcRenderer.invoke('get-filter-presets'),
+  deleteFilterPreset:   (name)     => ipcRenderer.invoke('delete-filter-preset', name),
+  // Settings / DB
   getSettings:          ()         => ipcRenderer.invoke('get-settings'),
   getDbPath:            ()         => ipcRenderer.invoke('get-db-path'),
   clearDatabase:        ()         => ipcRenderer.invoke('clear-database'),
-  // Auto-import event
-  onAutoImport: (cb) => ipcRenderer.on('auto-import', (_, data) => cb(data)),
+  setTheme:             (theme)    => ipcRenderer.invoke('set-theme', theme),
+  // Auto-update
+  checkForUpdate:       ()         => ipcRenderer.invoke('check-for-update'),
+  installUpdate:        ()         => ipcRenderer.invoke('install-update'),
+  // Events
+  onAutoImport:         (cb) => ipcRenderer.on('auto-import',         (_, d) => cb(d)),
+  onUpdateAvailable:    (cb) => ipcRenderer.on('update-available',    ()    => cb()),
+  onUpdateNotAvailable: (cb) => ipcRenderer.on('update-not-available',()    => cb()),
+  onUpdateDownloaded:   (cb) => ipcRenderer.on('update-downloaded',   ()    => cb()),
+  onUpdateProgress:     (cb) => ipcRenderer.on('update-progress',     (_, p)=> cb(p)),
 });
+

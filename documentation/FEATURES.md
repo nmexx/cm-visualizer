@@ -7,6 +7,7 @@
 | 1.0.0   | 2025‑01    | Initial release — Sold Orders dashboard        |
 | 1.1.0   | 2025‑01    | Bug fixes, ESLint + Jest setup, GitHub push    |
 | 1.2.0   | 2025‑07    | Purchases dashboard, trend KPIs, pagination, export, offline Chart.js, chokidar auto-sync, missing-month detection |
+| 1.3.0   | 2025‑07    | P&L view, Inventory, Time-to-sell, drag-drop import, light/dark theme, date presets, filter presets, repeat buyers, Set ROI, foil premium, xlsx export, auto-updater |
 
 ---
 
@@ -184,3 +185,112 @@ card_name TEXT, localized_name TEXT, set_name TEXT, collector_num TEXT,
 rarity TEXT, condition TEXT, language TEXT, is_foil INTEGER,
 quantity INTEGER, price REAL
 ```
+
+---
+
+## v1.3.0 — Analytics, UX, and Distribution (2025-07)
+
+### 1. P&L / Profit View
+A dedicated **P&L** page joins sales and purchases by `card_name + set_name` to produce:
+- KPIs: Total Revenue, Total Cost, Total Profit, % of Cards Profitable
+- Per-card table: qty sold, revenue, cost, **profit** (green/red), **margin %**
+- Implemented in `lib/analytics.js → computeProfitLoss(soldItems, boughtItems)`
+- Main process fetches raw rows and delegates to pure function; result serialized to IPC
+
+### 2. Inventory
+The **Inventory** page shows current stock (bought − sold):
+- KPIs: Cards on Hand, Estimated Portfolio Value, Unique Cards, Avg Buy Price
+- Per-card table with `qty_bought`, `qty_sold`, `qty_on_hand`, `avg_buy_price`, `estimated_value`
+- Client-side search box (`#inventory-search`) for instant filtering
+- Implemented in `lib/analytics.js → computeInventory(boughtItems, soldItems)`
+
+### 3. Time-to-Sell Analysis
+Within the P&L page, a secondary table shows **days from first purchase to first sale** for each card:
+- `< 14 days` → green badge ("Fast")
+- `14–60 days` → amber badge ("Medium")
+- `> 60 days` → red badge ("Slow")
+- Implemented in `lib/analytics.js → computeTimeToSell(purchaseItems, saleItems)`
+
+### 4. Drag-and-Drop CSV Import
+Drop one or more Cardmarket CSV files anywhere on the app window:
+- A translucent `#drag-overlay` appears on `dragover`
+- On `drop`, Electron's `file.path` is extracted and passed to the existing `importFile` IPC handler
+- Non-CSV files are silently filtered; toast shows how many orders were inserted
+
+### 5. Dark/Light Theme Toggle
+- A `☀` / `🌙` button in the top bar and in Settings switches between dark (default) and light themes
+- Theme stored in `settings` table via `set-theme` IPC handler; restored on startup
+- Implemented via CSS custom properties — `[data-theme="light"]` overrides on `:root` variables
+
+### 6. Date Range Presets
+Four shortcut buttons (**30d / 90d / 1y / YTD**) above the date filters set the date range automatically and reload all dashboards including analytics.
+
+### 7. Repeat Buyer Analysis
+On the Orders page, a new **Repeat Buyers** panel shows:
+- KPIs: Unique Buyers, Repeat Buyers, Repeat Buyer %, Repeat Revenue %
+- Distribution donut chart: "Bought once / twice / 3+ times"
+- Sortable table of buyers by order count and total spend
+- Implemented in `lib/analytics.js → computeRepeatBuyers(orders)`
+
+### 8. Set ROI
+On the Sets page, a **Set ROI** table cross-references average buy vs average sell price for each set, computing `roi_pct = (avg_sell − avg_buy) / avg_buy × 100`.  
+Positive ROI cells are coloured green, negative red.
+
+### 9. Foil Premium Analysis
+On the Cards page, a **Foil Premium** section shows, for cards that appear in both foil and non-foil form, `avg_foil_price`, `avg_normal_price`, and `foil_premium_pct`.
+- Implemented in `lib/analytics.js → computeFoilPremium(soldItems)`
+
+### 10. xlsx Export
+All major tables (Cards, Orders, Purchases, P&L, Inventory) have an **Export xlsx** button powered by [SheetJS (xlsx)](https://sheetjs.com/):
+- Pure-JS; no native bindings
+- IPC handler `export-xlsx` receives `{ type, rows }`, writes a `.xlsx` to `Downloads`
+- Returns `{ ok, path }` for toast confirmation
+
+### 11. Saved Filter Presets
+A `+` button next to the date filters opens a modal to name and save the current date range:
+- Presets stored in `settings` table with key `preset_<name>`
+- A `<select>` dropdown lets you apply any saved preset
+- Implemented via IPC handlers: `save-filter-preset`, `get-filter-presets`, `delete-filter-preset`
+
+### 12. Auto-Updater
+Uses `electron-updater` with GitHub Releases as the update server:
+- `publish.provider = "github"`, `owner = "nmexx"`, `repo = "cm-visualizer"` in `package.json`
+- `autoDownload = false`; only enabled when `app.isPackaged`
+- A dismissible **update banner** appears when a new release is detected
+- Settings page has a **Check for Updates** button with status text
+- Wrapped in `try/catch` for graceful fallback in development
+
+---
+
+## Architecture Notes (v1.3.0)
+
+### `lib/analytics.js`
+Pure functions with no Electron or SQLite dependency — fully testable with Jest.
+
+| Function | Input | Output |
+|---|---|---|
+| `computeProfitLoss(soldItems, boughtItems)` | raw DB rows | `[{ card_name, set_name, qty_sold, total_revenue, total_cost, profit, margin_pct }]` |
+| `computeInventory(boughtItems, soldItems)` | raw DB rows | `[{ card_name, set_name, qty_bought, qty_sold, qty_on_hand, avg_buy_price, estimated_value }]` |
+| `computeRepeatBuyers(orders)` | sale orders | `{ total, repeatCount, repeatPct, repeatRevenuePct, buyers, distribution }` |
+| `computeSetROI(soldItems, boughtItems)` | raw DB rows | `[{ set_name, cards_sold, avg_buy_price, avg_sell_price, roi_pct }]` |
+| `computeFoilPremium(soldItems)` | sale items | `[{ card_name, avg_normal_price, avg_foil_price, foil_premium_pct }]` |
+| `computeTimeToSell(purchaseItems, saleItems)` | raw DB rows | `[{ card_name, set_name, days_to_sell }]` |
+
+### IPC Channel Reference (new in v1.3.0)
+
+| Channel | Direction | Purpose |
+|---|---|---|
+| `get-analytics` | invoke | Returns `{ profitLoss, inventory, repeatBuyers, setROI, foilPremium, timeToSell }` |
+| `export-xlsx` | invoke | Writes xlsx to Downloads, returns `{ ok, path }` |
+| `save-filter-preset` | invoke | Stores `{ name, from, to }` in settings table |
+| `get-filter-presets` | invoke | Returns array of saved presets |
+| `delete-filter-preset` | invoke | Deletes preset by name |
+| `set-theme` | invoke | Persists `'dark'` or `'light'` in settings |
+| `check-for-update` | invoke | Returns `{ status }` |
+| `install-update` | invoke | Calls `autoUpdater.downloadUpdate()` |
+| `update-available` | event | Emitted when new version found |
+| `update-downloaded` | event | Emitted when download complete |
+
+### Test Coverage (v1.3.0)
+- **82 tests** across 4 test files
+- `tests/analytics.test.js`: 33 tests covering all 6 analytics functions, including edge cases (empty inputs, negative profit, null margins, sort order, key matching)
