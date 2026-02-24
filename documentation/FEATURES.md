@@ -11,6 +11,7 @@
 | 1.4.0   | 2026‑02    | Separate sold/purchased folders, ManaBox inventory import, Scryfall card hover |
 | 1.5.0   | 2026‑07    | Sortable table columns across all 12 data tables |
 | 1.6.0   | 2026‑02    | Cardmarket price guide download, inventory file path in settings, market price columns in inventory |
+| 1.7.0   | 2026‑02    | Modular architecture refactor: ES module renderer split, IPC constants, migration runner, settingsStore, repository layer, electron.net, timeout + atomic download |
 
 ---
 
@@ -569,3 +570,99 @@ A new **Inventory File (ManaBox CSV)** row in **Settings → Data Import** store
 - **114 tests** across 6 test files (+3 new)
 - `tests/analytics.test.js`: 3 new tests for `computeInventory` product_id handling
   - product_id propagation, first-valid-id latching, null when absent
+
+---
+
+## Features in v1.7.0
+
+### 1. Modular Architecture Refactor
+
+v1.7.0 is a structural release with no user-visible behaviour changes. The
+codebase was reorganised for long-term maintainability.
+
+#### Main Process Refactoring
+
+`main.js` was reduced from ~915 lines to ~260 lines by extracting all business
+logic into focused modules:
+
+| New module | Responsibility |
+|---|---|
+| `lib/ipcChannels.js` | Frozen constant map of every IPC channel name — single source of truth used by both `main.js` and `preload.js` |
+| `lib/settingsStore.js` | `SettingsStore` class — typed read/write wrapper over the SQLite `settings` table with built-in defaults |
+| `lib/migrations.js` | `runMigrations(db)` — applies numbered schema migrations once per database, idempotent |
+| `lib/priceGuide.js` | Moved price-guide download, cache loading, and inventory enrichment out of `main.js` |
+| `lib/repositories/salesRepo.js` | All SQL queries for the Sales dashboard |
+| `lib/repositories/purchasesRepo.js` | All SQL queries for the Purchases dashboard |
+| `ipc/fileHandlers.js` | IPC handlers for import, export, and folder management |
+| `ipc/settingsHandlers.js` | IPC handlers for settings, filter presets, db-clear, auto-updater |
+| `ipc/analyticsHandlers.js` | IPC handlers for analytics queries and price guide download |
+
+Each `ipc/` module exports a single `register(ctx)` function, where `ctx` is a
+dependency-injection object. This avoids module-level globals and makes handlers
+independently testable.
+
+#### Renderer ES Module Split
+
+`renderer.js` was reduced from ~1 427 lines to ~40 lines. The monolith was
+split into 17 focused ES modules under `renderer/`:
+
+| Module | Responsibility |
+|---|---|
+| `renderer/state.js` | Shared mutable state singleton |
+| `renderer/utils.js` | Formatting helpers, toast, showLoading, buildFilters |
+| `renderer/charts.js` | Chart.js wrapper functions |
+| `renderer/sortable.js` | `sortArray()` + `SortableTable` class |
+| `renderer/tables.js` | All `renderXxxRows` functions and `SortableTable` instances |
+| `renderer/sales.js` | Sales tab: `loadData`, `renderDashboard` |
+| `renderer/purchases.js` | Purchases tab: `loadPurchaseData`, `renderPurchases` |
+| `renderer/analytics.js` | Analytics tab: `loadAnalyticsData`, `renderAnalytics` |
+| `renderer/manabox.js` | Manabox tab: `loadManaboxInventory` |
+| `renderer/settings.js` | Settings tab + app `init()` |
+| `renderer/features/theme.js` | Theme switching |
+| `renderer/features/dragdrop.js` | Drag-and-drop CSV import |
+| `renderer/features/datePresets.js` | Date range preset buttons |
+| `renderer/features/filterPresets.js` | Saved filter presets |
+| `renderer/features/autoUpdate.js` | Auto-update UI |
+| `renderer/features/scryfall.js` | Scryfall card image tooltip |
+
+`index.html` now loads `renderer.js` with `type="module"` for native ES module
+support without a bundler.
+
+### 2. electron.net for Price Guide Download
+
+`lib/priceGuide.js` now uses `electron.net.fetch()` instead of Node's `https`
+module. This provides:
+
+- **System proxy support** — respects OS-level proxy settings
+- **OS certificate store** — works in corporate environments with custom CAs
+- **60-second timeout** — `AbortController` prevents indefinite hangs
+- **Atomic writes** — downloads to `.tmp` then `renameSync`, preventing partial-write corruption
+
+### 3. Database Migrations
+
+`lib/migrations.js` introduces a `schema_version` table and an ordered migration
+runner. Migrations are applied exactly once and the system is idempotent —
+running `runMigrations(db)` multiple times is safe.
+
+### 4. Typed Settings Store
+
+`lib/settingsStore.js` replaces scattered `INSERT OR REPLACE INTO settings`
+calls with a single `SettingsStore` class that handles JSON serialisation,
+typed defaults, and a clean `get/set/delete/getAll` API.
+
+### 5. Repository Layer
+
+`lib/repositories/salesRepo.js` and `purchasesRepo.js` are pure functions that
+accept a `db` instance. This makes SQL queries independently testable without
+starting Electron.
+
+### Architecture Notes (v1.7.0)
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for a full description of the module
+structure, dependency graph, IPC pattern, migration runner, and settings store.
+
+### Test Coverage (v1.7.0)
+
+- New: `tests/settingsStore.test.js` — 8 tests
+- New: `tests/migrations.test.js` — 5 tests
+- All existing tests continue to pass

@@ -1,46 +1,46 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const CH = require('./lib/ipcChannels');
 
 contextBridge.exposeInMainWorld('mtg', {
   // Sold-orders
-  selectFolder:         ()         => ipcRenderer.invoke('select-folder'),
-  importFolder:         (folder)   => ipcRenderer.invoke('import-folder', folder),
-  importFile:           ()         => ipcRenderer.invoke('import-file'),
-  getStats:             (filters)  => ipcRenderer.invoke('get-stats', filters),
-  setFolderSold:        ()         => ipcRenderer.invoke('set-folder-sold'),
+  selectFolder:         ()        => ipcRenderer.invoke(CH.SELECT_FOLDER),
+  importFolder:         folder    => ipcRenderer.invoke(CH.IMPORT_FOLDER, folder),
+  importFile:           ()        => ipcRenderer.invoke(CH.IMPORT_FILE),
+  getStats:             filters   => ipcRenderer.invoke(CH.GET_STATS, filters),
+  setFolderSold:        ()        => ipcRenderer.invoke(CH.SET_FOLDER_SOLD),
   // Purchased-orders
-  importPurchaseFile:   ()         => ipcRenderer.invoke('import-purchase-file'),
-  importPurchaseFolder: (folder)   => ipcRenderer.invoke('import-purchase-folder', folder),
-  getPurchaseStats:     (filters)  => ipcRenderer.invoke('get-purchase-stats', filters),
-  setFolderPurchased:   ()         => ipcRenderer.invoke('set-folder-purchased'),
+  importPurchaseFile:   ()        => ipcRenderer.invoke(CH.IMPORT_PURCHASE_FILE),
+  importPurchaseFolder: folder    => ipcRenderer.invoke(CH.IMPORT_PURCHASE_FOLDER, folder),
+  getPurchaseStats:     filters   => ipcRenderer.invoke(CH.GET_PURCHASE_STATS, filters),
+  setFolderPurchased:   ()        => ipcRenderer.invoke(CH.SET_FOLDER_PURCHASED),
   // ManaBox inventory
-  importInventoryFile:  ()         => ipcRenderer.invoke('import-inventory-file'),
-  getInventoryList:     ()         => ipcRenderer.invoke('get-inventory-list'),
-  setInventoryFile:     ()         => ipcRenderer.invoke('set-inventory-file'),
-  // Market prices (Cardmarket price guide)
-  downloadPriceGuide:   ()         => ipcRenderer.invoke('download-price-guide'),
-  // Analytics (P&L, Inventory, Repeat Buyers, Set ROI, Foil Premium, Time-to-sell)
-  getAnalytics:         (filters)  => ipcRenderer.invoke('get-analytics', filters),
+  importInventoryFile:  ()        => ipcRenderer.invoke(CH.IMPORT_INVENTORY_FILE),
+  getInventoryList:     ()        => ipcRenderer.invoke(CH.GET_INVENTORY_LIST),
+  setInventoryFile:     ()        => ipcRenderer.invoke(CH.SET_INVENTORY_FILE),
+  // Market prices
+  downloadPriceGuide:   ()        => ipcRenderer.invoke(CH.DOWNLOAD_PRICE_GUIDE),
+  // Analytics
+  getAnalytics:         filters   => ipcRenderer.invoke(CH.GET_ANALYTICS, filters),
   // Export
-  exportCsv:            (type)     => ipcRenderer.invoke('export-csv', type),
-  exportXlsx:           (payload)  => ipcRenderer.invoke('export-xlsx', payload),
+  exportCsv:            type      => ipcRenderer.invoke(CH.EXPORT_CSV, type),
+  exportXlsx:           payload   => ipcRenderer.invoke(CH.EXPORT_XLSX, payload),
   // Filter presets
-  saveFilterPreset:     (preset)   => ipcRenderer.invoke('save-filter-preset', preset),
-  getFilterPresets:     ()         => ipcRenderer.invoke('get-filter-presets'),
-  deleteFilterPreset:   (name)     => ipcRenderer.invoke('delete-filter-preset', name),
+  saveFilterPreset:     preset    => ipcRenderer.invoke(CH.SAVE_FILTER_PRESET, preset),
+  getFilterPresets:     ()        => ipcRenderer.invoke(CH.GET_FILTER_PRESETS),
+  deleteFilterPreset:   name      => ipcRenderer.invoke(CH.DELETE_FILTER_PRESET, name),
   // Settings / DB
-  getSettings:          ()         => ipcRenderer.invoke('get-settings'),
-  getDbPath:            ()         => ipcRenderer.invoke('get-db-path'),
-  clearDatabase:        ()         => ipcRenderer.invoke('clear-database'),
-  setTheme:             (theme)    => ipcRenderer.invoke('set-theme', theme),
+  getSettings:          ()        => ipcRenderer.invoke(CH.GET_SETTINGS),
+  getDbPath:            ()        => ipcRenderer.invoke(CH.GET_DB_PATH),
+  clearDatabase:        ()        => ipcRenderer.invoke(CH.CLEAR_DATABASE),
+  setTheme:             theme     => ipcRenderer.invoke(CH.SET_THEME, theme),
   // Auto-update
-  checkForUpdate:       ()         => ipcRenderer.invoke('check-for-update'),
-  installUpdate:        ()         => ipcRenderer.invoke('install-update'),
-  // Events
-  onAutoImport:         (cb) => ipcRenderer.on('auto-import',          (_, d) => cb(d)),
-  onAutoImportPurchase: (cb) => ipcRenderer.on('auto-import-purchase', (_, d) => cb(d)),
-  onUpdateAvailable:    (cb) => ipcRenderer.on('update-available',    ()    => cb()),
-  onUpdateNotAvailable: (cb) => ipcRenderer.on('update-not-available',()    => cb()),
-  onUpdateDownloaded:   (cb) => ipcRenderer.on('update-downloaded',   ()    => cb()),
-  onUpdateProgress:     (cb) => ipcRenderer.on('update-progress',     (_, p)=> cb(p)),
+  checkForUpdate:       ()        => ipcRenderer.invoke(CH.CHECK_FOR_UPDATE),
+  installUpdate:        ()        => ipcRenderer.invoke(CH.INSTALL_UPDATE),
+  // Push notifications (main -> renderer)
+  onAutoImport:         cb => ipcRenderer.on(CH.AUTO_IMPORT,          (_, d) => cb(d)),
+  onAutoImportPurchase: cb => ipcRenderer.on(CH.AUTO_IMPORT_PURCHASE, (_, d) => cb(d)),
+  onUpdateAvailable:    cb => ipcRenderer.on(CH.UPDATE_AVAILABLE,     ()     => cb()),
+  onUpdateNotAvailable: cb => ipcRenderer.on(CH.UPDATE_NOT_AVAILABLE, ()     => cb()),
+  onUpdateDownloaded:   cb => ipcRenderer.on(CH.UPDATE_DOWNLOADED,    ()     => cb()),
+  onUpdateProgress:     cb => ipcRenderer.on(CH.UPDATE_PROGRESS,      (_, p) => cb(p)),
 });
-
