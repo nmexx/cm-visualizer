@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const path = require('path');
-const fs   = require('fs');
+const path  = require('path');
+const fs    = require('fs');
+const https = require('https');
+const http  = require('http');
 const chokidar = require('chokidar');
 const XLSX = require('xlsx');
 const { sanitizeDate } = require('./lib/parser');
@@ -23,8 +25,53 @@ try {
 let mainWindow;
 let db;
 let dbPath;
-let watcherSold      = null;
-let watcherPurchased = null;
+let watcherSold       = null;
+let watcherPurchased  = null;
+
+// ─── Price guide cache ────────────────────────────────────────────────────────
+/** In-memory map: idProduct (integer) → price entry from the price guide JSON */
+const priceGuideCache = new Map();
+let priceGuidePath  = null;
+
+/** Load the cached price guide JSON from disk into priceGuideCache. */
+function loadPriceGuide() {
+  if (!priceGuidePath) { priceGuidePath = path.join(app.getPath('userData'), 'price_guide.json'); }
+  if (!fs.existsSync(priceGuidePath)) { return; }
+  try {
+    const data = JSON.parse(fs.readFileSync(priceGuidePath, 'utf-8'));
+    priceGuideCache.clear();
+    for (const entry of (data.priceGuides || [])) {
+      priceGuideCache.set(entry.idProduct, entry);
+    }
+  } catch { /* ignore parse errors — corrupted file */ }
+}
+
+/**
+ * Download a URL to destPath, following HTTP(S) redirects.
+ * @returns {Promise<void>}
+ */
+function downloadToFile(url, destPath) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destPath);
+    function doGet(u) {
+      const mod = u.startsWith('https') ? https : http;
+      mod.get(u, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          doGet(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          file.destroy();
+          reject(new Error('HTTP ' + res.statusCode));
+          return;
+        }
+        res.pipe(file);
+        file.on('finish', () => file.close(resolve));
+      }).on('error', err => { file.destroy(); reject(err); });
+    }
+    doGet(url);
+  });
+}
 
 // ─── Database setup ───────────────────────────────────────────────────────────
 function initDatabase() {
@@ -463,7 +510,7 @@ function getAnalyticsData(filters = {}) {
   `).all(dateFrom, dateToEnd);
 
   const allSoldItems   = db.prepare(`SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity, o.date_of_purchase AS date_of_sale FROM order_items i JOIN orders o ON o.order_id = i.order_id`).all();
-  const allBoughtItems = db.prepare(`SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity, p.date_of_purchase FROM purchase_items i JOIN purchases p ON p.order_id = i.order_id`).all();
+  const allBoughtItems = db.prepare(`SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity, i.product_id, p.date_of_purchase FROM purchase_items i JOIN purchases p ON p.order_id = i.order_id`).all();
 
   const allOrders = db.prepare(`
     SELECT username, buyer_name, merchandise_value, article_count
@@ -474,12 +521,31 @@ function getAnalyticsData(filters = {}) {
 
   return {
     profitLoss:    computeProfitLoss(soldItems, boughtItems),
-    inventory:     computeInventory(allBoughtItems, allSoldItems),
+    inventory:     enrichInventoryWithMarketPrices(computeInventory(allBoughtItems, allSoldItems)),
     repeatBuyers:  computeRepeatBuyers(allOrders),
     setROI:        computeSetROI(allSoldItems, allBoughtItems),
     foilPremium:   computeFoilPremium(soldItems),
     timeToSell:    computeTimeToSell(allBoughtItems, allSoldItems),
   };
+}
+
+// ─── Market-price enrichment ─────────────────────────────────────────────────
+/**
+ * Annotate each inventory row with current market prices from the cached price guide.
+ * Adds: market_price (trend || avg), market_price_foil, market_value.
+ */
+function enrichInventoryWithMarketPrices(inventory) {
+  if (priceGuideCache.size === 0) { return inventory; }
+  for (const item of inventory) {
+    if (!item.product_id) { continue; }
+    const pid = parseInt(item.product_id, 10);
+    const pg  = priceGuideCache.get(pid);
+    if (!pg) { continue; }
+    item.market_price      = pg.trend   ?? pg.avg   ?? null;
+    item.market_price_foil = pg['trend-foil'] ?? pg['avg-foil'] ?? null;
+    item.market_value      = item.qty_on_hand * (item.market_price || 0);
+  }
+  return inventory;
 }
 
 // ─── Window ───────────────────────────────────────────────────────────────────
@@ -514,6 +580,16 @@ app.whenReady().then(() => {
 
   const savedPurchasedFolder = db.prepare(`SELECT value FROM settings WHERE key = 'csv_folder_purchased'`).get();
   if (savedPurchasedFolder?.value) { startPurchasedWatcher(savedPurchasedFolder.value); }
+
+  // Load cached price guide into memory
+  priceGuidePath = path.join(app.getPath('userData'), 'price_guide.json');
+  loadPriceGuide();
+
+  // Auto-import saved inventory file (if configured and file still exists)
+  const savedInventoryFile = db.prepare(`SELECT value FROM settings WHERE key = 'inventory_file_path'`).get();
+  if (savedInventoryFile?.value && fs.existsSync(savedInventoryFile.value)) {
+    try { importInventoryFileWithDB(savedInventoryFile.value); } catch { /* ignore startup errors */ }
+  }
 
   // Auto-updater: check on startup in production
   if (autoUpdater && app.isPackaged) {
@@ -783,6 +859,44 @@ ipcMain.handle('get-inventory-list', async () => {
     FROM manabox_inventory
     ORDER BY card_name ASC
   `).all();
+});
+
+ipcMain.handle('set-inventory-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+    title: 'Select ManaBox Inventory CSV'
+  });
+  if (result.canceled) { return null; }
+  const filePath = result.filePaths[0];
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('inventory_file_path', ?)`).run(filePath);
+  try {
+    const r = importInventoryFileWithDB(filePath);
+    return { path: filePath, ...r };
+  } catch (e) {
+    return { path: filePath, error: e.message };
+  }
+});
+
+ipcMain.handle('download-price-guide', async () => {
+  const url      = 'https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_1.json';
+  const tmpPath  = path.join(app.getPath('userData'), 'price_guide_tmp.json');
+  if (!priceGuidePath) { priceGuidePath = path.join(app.getPath('userData'), 'price_guide.json'); }
+  try {
+    await downloadToFile(url, tmpPath);
+    const raw  = fs.readFileSync(tmpPath, 'utf-8');
+    const data = JSON.parse(raw);
+    const count = data.priceGuides?.length || 0;
+    fs.renameSync(tmpPath, priceGuidePath);
+    priceGuideCache.clear();
+    for (const entry of (data.priceGuides || [])) { priceGuideCache.set(entry.idProduct, entry); }
+    const updatedAt = data.createdAt || new Date().toISOString();
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('price_guide_updated_at', ?)`).run(updatedAt);
+    return { ok: true, count, updatedAt };
+  } catch (e) {
+    try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    return { ok: false, error: e.message };
+  }
 });
 
 ipcMain.handle('get-settings', async () => {

@@ -128,6 +128,27 @@ describe('computeInventory', () => {
     // avg buy = (2×1 + 3×2) / 5 = 8/5 = 1.60
     expect(r.avg_buy_price).toBeCloseTo(1.60);
   });
+
+  test('includes product_id from first bought row in result', () => {
+    const bought = [{ card_name: 'Brainstorm', set_name: 'ICE', rarity: 'Common', quantity: 2, price: 1.5, product_id: '12345' }];
+    const [r] = computeInventory(bought, []);
+    expect(r.product_id).toBe('12345');
+  });
+
+  test('latches first valid product_id when multiple rows exist', () => {
+    const bought = [
+      { card_name: 'Bolt', set_name: 'A', rarity: 'Common', quantity: 1, price: 1.0, product_id: '111' },
+      { card_name: 'Bolt', set_name: 'A', rarity: 'Common', quantity: 1, price: 1.0, product_id: '222' },
+    ];
+    const [r] = computeInventory(bought, []);
+    expect(r.product_id).toBe('111');
+  });
+
+  test('sets product_id to null when not provided', () => {
+    const bought = [{ card_name: 'Forest', set_name: 'LEA', rarity: 'Land', quantity: 1, price: 0.5 }];
+    const [r] = computeInventory(bought, []);
+    expect(r.product_id).toBeNull();
+  });
 });
 
 // ─── computeRepeatBuyers ──────────────────────────────────────────────────────

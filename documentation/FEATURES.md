@@ -10,6 +10,7 @@
 | 1.3.0   | 2025‑07    | P&L view, Inventory, Time-to-sell, drag-drop import, light/dark theme, date presets, filter presets, repeat buyers, Set ROI, foil premium, xlsx export, auto-updater |
 | 1.4.0   | 2026‑02    | Separate sold/purchased folders, ManaBox inventory import, Scryfall card hover |
 | 1.5.0   | 2026‑07    | Sortable table columns across all 12 data tables |
+| 1.6.0   | 2026‑02    | Cardmarket price guide download, inventory file path in settings, market price columns in inventory |
 
 ---
 
@@ -482,3 +483,89 @@ Each table now has a dedicated `renderXxxRows(arr)` function that writes only th
 - **124 tests** across 6 test files (+25 new)
 - `tests/sorting.test.js`: 25 tests covering all `sortArray` behaviours
   - Numeric asc/desc, string asc/desc, null handling, immutability, numeric-string parsing
+
+
+---
+
+## Features in v1.6.0
+
+### 1. Cardmarket Price Guide Download
+
+The app can download the official Cardmarket price guide JSON and use it to display **current market prices** alongside your purchase cost in the Inventory table.
+
+#### UI
+- **Settings → Market Prices** section shows the last downloaded timestamp and a **↓ Download Now** button.
+- Prices refresh immediately in the Inventory table after every download.
+- On startup, the cached price guide is loaded automatically from disk.
+
+#### Price Guide Source
+
+`
+https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_1.json
+`
+
+This is an official, publicly available Cardmarket export (~3 MB, ~121 k entries, updated daily). Saved to `{userData}/price_guide.json`.
+
+#### Price fields used per product
+
+| Field | Description |
+|---|---|
+| `trend` | 7-day trend price (primary for normal cards) |
+| `avg` | 30-day average (fallback) |
+| `trend-foil` | Foil trend price |
+| `avg-foil` | Foil average (fallback for foil) |
+
+#### Linking prices to inventory
+Each row in `purchase_items` stores the Cardmarket `product_id`. `computeInventory` now propagates this to the result so the main process can annotate each inventory row with:
+
+| Field | Description |
+|---|---|
+| `market_price` | Current market trend/avg price per copy |
+| `market_price_foil` | Foil trend/avg price |
+| `market_value` | qty_on_hand x market_price |
+
+Rows without a known `product_id` show `—` in the market-price columns.
+
+#### Inventory table new columns
+
+| Column | Description |
+|---|---|
+| **Mkt Price** | Current market trend price per copy |
+| **Mkt Value** | Total current market value (on-hand × Mkt Price), highlighted gold |
+
+Both columns are fully sortable.
+
+---
+
+### 2. Inventory File Path in Settings
+
+A new **Inventory File (ManaBox CSV)** row in **Settings → Data Import** stores a persistent path to your ManaBox inventory export.
+
+- Click **Browse** to pick a CSV file; the file is imported immediately and the path is persisted as `inventory_file_path` in the settings table.
+- On every app startup the saved path is automatically re-imported.
+- The filename is displayed next to the Browse button for quick reference.
+
+---
+
+## Architecture Notes (v1.6.0)
+
+### `lib/analytics.js` — computeInventory update
+
+`computeInventory(boughtItems, soldItems)` now accepts an optional `product_id` on each bought row, latches the first non-null value seen per `card_name + set_name` key, and includes `product_id` in every result row (null if unavailable).
+
+### `main.js` additions
+
+| Symbol | Purpose |
+|---|---|
+| `priceGuideCache` | `Map<number, PriceEntry>` — in-memory lookup, loaded on startup |
+| `loadPriceGuide()` | Reads `price_guide.json` from userData, populates `priceGuideCache` |
+| `downloadToFile(url, dest)` | HTTPS download helper with redirect following |
+| `enrichInventoryWithMarketPrices(inv)` | Annotates inventory rows with market prices |
+| IPC `download-price-guide` | Downloads, parses, caches, saves timestamp → `{ok, count, updatedAt}` |
+| IPC `set-inventory-file` | File dialog, saves `inventory_file_path`, imports → `{path, inserted, skipped}` |
+
+### Test Coverage (v1.6.0)
+
+- **114 tests** across 6 test files (+3 new)
+- `tests/analytics.test.js`: 3 new tests for `computeInventory` product_id handling
+  - product_id propagation, first-valid-id latching, null when absent

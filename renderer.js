@@ -364,8 +364,9 @@ function renderInventoryRows(arr) {
   const filtered   = searchTerm ? arr.filter(r => r.card_name.toLowerCase().includes(searchTerm)) : arr;
   const tbody = document.querySelector('#table-inventory tbody');
   if (!tbody) { return; }
-  tbody.innerHTML = filtered.map(r => `
-    <tr>
+  tbody.innerHTML = filtered.map(r => {
+    const hasMkt = r.market_price != null;
+    return `<tr>
       <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
       <td>${esc(r.set_name || '—')}</td>
       <td>${r.qty_bought || 0}</td>
@@ -373,7 +374,10 @@ function renderInventoryRows(arr) {
       <td>${r.qty_on_hand || 0}</td>
       <td>${fmt(r.avg_buy_price)}</td>
       <td>${fmt(r.estimated_value)}</td>
-    </tr>`).join('');
+      <td class="mono${hasMkt ? '' : ' dim'}">${hasMkt ? fmt(r.market_price) : '—'}</td>
+      <td class="mono${hasMkt ? ' gold' : ' dim'}">${hasMkt ? fmt(r.market_value) : '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderRepeatBuyersRows(arr) {
@@ -803,6 +807,36 @@ document.getElementById('btn-set-folder-purchased').addEventListener('click', as
   toast(`Purchased folder set. Auto-sync active for: ${folder.split(/[\\/]/).pop()}`);
 });
 
+document.getElementById('btn-set-inventory-file')?.addEventListener('click', async () => {
+  const result = await window.mtg.setInventoryFile();
+  if (!result) { return; }
+  if (result.error) { toast('Inventory error: ' + result.error, 'error'); return; }
+  const el = document.getElementById('setting-inventory-file');
+  if (el) { el.textContent = result.path.split(/[/\\]/).pop(); }
+  toast(`Inventory file set. Imported ${result.inserted} new, ${result.skipped} existing`);
+  loadManaboxInventory();
+});
+
+document.getElementById('btn-download-price-guide')?.addEventListener('click', async () => {
+  const statusEl = document.getElementById('price-guide-status');
+  if (statusEl) { statusEl.textContent = 'Downloading…'; }
+  showLoading(true);
+  const result = await window.mtg.downloadPriceGuide();
+  showLoading(false);
+  if (!result.ok) {
+    if (statusEl) { statusEl.textContent = 'Error: ' + (result.error || 'failed'); }
+    toast('Price guide download failed: ' + (result.error || ''), 'error');
+    return;
+  }
+  const when = new Date(result.updatedAt).toLocaleString();
+  if (statusEl) { statusEl.textContent = `${result.count.toLocaleString()} products`; }
+  const pgEl = document.getElementById('setting-price-guide-updated');
+  if (pgEl) { pgEl.textContent = when; }
+  toast(`Price guide downloaded: ${result.count.toLocaleString()} products`);
+  // Reload analytics so inventory gets enriched with fresh market prices
+  loadAnalyticsData();
+});
+
 document.getElementById('btn-clear-db').addEventListener('click', async () => {
   if (!confirm('This will delete ALL sales and purchase data. Are you sure?')) { return; }
   await window.mtg.clearDatabase();
@@ -837,6 +871,18 @@ async function init() {
   }
   if (purchasedFolder) {
     document.getElementById('setting-folder-purchased').textContent = purchasedFolder;
+  }
+  const inventoryFilePath = settings.inventory_file_path;
+  if (inventoryFilePath) {
+    const el = document.getElementById('setting-inventory-file');
+    if (el) { el.textContent = inventoryFilePath.split(/[\\/]/).pop(); }
+  }
+  const priceGuideUpdatedAt = settings.price_guide_updated_at;
+  const pgEl = document.getElementById('setting-price-guide-updated');
+  if (pgEl) {
+    pgEl.textContent = priceGuideUpdatedAt
+      ? new Date(priceGuideUpdatedAt).toLocaleString()
+      : 'Never';
   }
   document.getElementById('setting-db-path').textContent = dbPath || '';
   document.getElementById('db-path-status').textContent  = dbPath ? dbPath.split(/[\\/]/).pop() : '';
@@ -909,7 +955,8 @@ stInventory = new SortableTable('table-inventory',
   [{ key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
    { key: 'qty_bought', type: 'num' }, { key: 'qty_sold', type: 'num' },
    { key: 'qty_on_hand', type: 'num' }, { key: 'avg_buy_price', type: 'num' },
-   { key: 'estimated_value', type: 'num' }],
+   { key: 'estimated_value', type: 'num' }, { key: 'market_price', type: 'num' },
+   { key: 'market_value', type: 'num' }],
   (sorted) => { sortedInventory = sorted; renderInventoryRows(sorted); },
   () => analyticsData?.inventory || []);
 

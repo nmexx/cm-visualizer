@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('mtg', {
   // ManaBox inventory
   importInventoryFile:  ()         => ipcRenderer.invoke('import-inventory-file'),
   getInventoryList:     ()         => ipcRenderer.invoke('get-inventory-list'),
+  setInventoryFile:     ()         => ipcRenderer.invoke('set-inventory-file'),
+  // Market prices (Cardmarket price guide)
+  downloadPriceGuide:   ()         => ipcRenderer.invoke('download-price-guide'),
   // Analytics (P&L, Inventory, Repeat Buyers, Set ROI, Foil Premium, Time-to-sell)
   getAnalytics:         (filters)  => ipcRenderer.invoke('get-analytics', filters),
   // Export

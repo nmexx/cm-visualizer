@@ -334,7 +334,7 @@
           </div>
           <div style="overflow-x:auto">
             <table class="data-table" id="table-inventory">
-              <thead><tr><th>Card</th><th>Set</th><th>Bought</th><th>Sold</th><th>On Hand</th><th>Avg Buy</th><th>Est. Value</th></tr></thead>
+              <thead><tr><th>Card</th><th>Set</th><th>Bought</th><th>Sold</th><th>On Hand</th><th>Avg Buy</th><th>Est. Value</th><th>Mkt Price</th><th>Mkt Value</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -382,11 +382,32 @@
           <button class="btn" id="btn-set-folder-purchased">Browse</button>
         </div>
         <div class="settings-row">
+          <label>Inventory File (ManaBox CSV)</label>
+          <div class="path-display" id="setting-inventory-file">Not configured</div>
+          <button class="btn inv" id="btn-set-inventory-file">Browse</button>
+        </div>
+        <div class="settings-row">
           <label>Database Path</label>
           <div class="path-display" id="setting-db-path">Loading...</div>
         </div>
         <div class="settings-row">
           <label style="color:var(--text-dim);font-size:12px">Auto-sync watches each configured folder and imports new CSV files automatically.</label>
+        </div>
+      </div>
+      <div class="settings-group">
+        <div class="settings-title">Market Prices</div>
+        <div class="settings-row">
+          <label>Price Guide Source</label>
+          <span style="font-size:12px;color:var(--text-dim)">Cardmarket price guide — updated daily</span>
+        </div>
+        <div class="settings-row">
+          <label>Last Downloaded</label>
+          <span id="setting-price-guide-updated" style="font-family:JetBrains Mono,monospace;font-size:12px;color:var(--text-dim)">Never</span>
+        </div>
+        <div class="settings-row">
+          <label>Download prices</label>
+          <button class="btn" id="btn-download-price-guide">&#8595; Download Now</button>
+          <span id="price-guide-status" style="font-size:12px;color:var(--text-dim);margin-left:8px"></span>
         </div>
       </div>
       <div class="settings-group">
