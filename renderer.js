@@ -12,13 +12,19 @@ const GOLD_PALETTE = [
 ];
 
 /* ─── State ───────────────────────────────────────────────────────────────── */
-let charts       = {};
-let currentData  = null;
-let purchaseData = null;
-let analyticsData = null;
-let filters      = {};
-let orderPage    = 1;
-const PAGE_SIZE  = 50;
+let charts            = {};
+let currentData       = null;
+let purchaseData      = null;
+let analyticsData     = null;
+let filters           = {};
+let orderPage         = 1;
+const PAGE_SIZE       = 50;
+let ordersDisplayBase = null;   // sorted override for orders table (null = use allOrders)
+let sortedInventory   = null;   // sorted override for inventory table
+let sortedManabox     = null;   // sorted override for manabox table
+// SortableTable instances (initialised at bottom of file, before init())
+let stTopCards, stSets, stOrders, stBoughtCards, stPurchases;
+let stPnl, stTimeToSell, stInventory, stRepeatBuyers, stSetROI, stFoilPremium, stManabox;
 
 /* ─── Navigation ──────────────────────────────────────────────────────────── */
 document.querySelectorAll('.nav-btn[data-page]').forEach(btn => {
@@ -190,6 +196,245 @@ function hbarChart(id, labels, data, color = '#c9a227') {
   });
 }
 
+/* ─── Sort utilities ────────────────────────────────────────────────────────── */
+/**
+ * Return a sorted shallow copy of `arr` by the given object property key.
+ * (Same logic lives in lib/sortUtils.js for unit-testing.)
+ * @param {Object[]}     arr  - source array (never mutated)
+ * @param {string}       key  - property name to sort by
+ * @param {'str'|'num'}  type - 'num' = numeric, 'str' = locale string
+ * @param {'asc'|'desc'} dir  - sort direction
+ * @returns {Object[]} new sorted array
+ */
+function sortArray(arr, key, type, dir) {
+  const d = dir === 'desc' ? -1 : 1;
+  return [...arr].sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+    if (type === 'num') {
+      return d * ((parseFloat(av) || 0) - (parseFloat(bv) || 0));
+    }
+    return d * String(av ?? '').localeCompare(String(bv ?? ''), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  });
+}
+
+/**
+ * Attaches click-to-sort behaviour to a `.data-table`.
+ * @param {string}   tableId   - DOM id of the <table>
+ * @param {Array<{key:string,type:'str'|'num'}|null>} cols
+ *   One entry per <th>. Use null for columns that should not be sortable (e.g. rank "#").
+ * @param {function(any[]): void} renderFn
+ *   Called with the sorted array to re-render the tbody.
+ * @param {function(): any[]} getDataFn
+ *   Returns the current canonical (unsorted) source array.
+ */
+class SortableTable {
+  constructor(tableId, cols, renderFn, getDataFn) {
+    this.tableId   = tableId;
+    this.cols      = cols;
+    this.renderFn  = renderFn;
+    this.getDataFn = getDataFn;
+    this.sortCol   = -1;
+    this.sortDir   = 'asc';
+    this._init();
+  }
+
+  _init() {
+    const table = document.getElementById(this.tableId);
+    if (!table) { return; }
+    table.querySelectorAll('thead th').forEach((th, i) => {
+      if (!this.cols[i]) { return; }
+      th.classList.add('sortable');
+      th.addEventListener('click', () => this._sort(i));
+    });
+  }
+
+  _sort(col) {
+    const table = document.getElementById(this.tableId);
+    if (!table || !this.cols[col]) { return; }
+    this.sortDir = (this.sortCol === col && this.sortDir === 'asc') ? 'desc' : 'asc';
+    this.sortCol = col;
+    table.querySelectorAll('thead th').forEach((th, i) => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (i === col) { th.classList.add('sort-' + this.sortDir); }
+    });
+    const { key, type } = this.cols[col];
+    this.renderFn(sortArray(this.getDataFn(), key, type, this.sortDir));
+  }
+
+  /** Reset visual indicators and internal state (call when data reloads). */
+  reset() {
+    this.sortCol = -1;
+    this.sortDir = 'asc';
+    const table = document.getElementById(this.tableId);
+    if (table) {
+      table.querySelectorAll('thead th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+    }
+  }
+}
+
+/* ─── Per-table tbody render functions ─────────────────────────────────────── */
+
+function renderTopCardsRows(arr) {
+  const totalCardRev = (currentData?.topCards || []).reduce((a, b) => a + (b.revenue || 0), 0);
+  document.querySelector('#table-top-cards tbody').innerHTML = arr.map((c, i) => `
+    <tr>
+      <td class="dim">${i + 1}</td>
+      <td data-card-name="${esc(c.card_name)}">${esc(c.card_name)}</td>
+      <td class="dim">${esc(c.set_name)}</td>
+      <td>${rarityBadge(c.rarity)}</td>
+      <td class="mono">${fmtNum(c.qty_sold)}</td>
+      <td class="mono gold">${fmt(c.revenue)}</td>
+      <td class="mono dim">${totalCardRev > 0 ? (c.revenue / totalCardRev * 100).toFixed(1) + '%' : '-'}</td>
+    </tr>`).join('');
+}
+
+function renderSetsRows(arr) {
+  const totalSetRev = (currentData?.bySet || []).reduce((a, b) => a + (b.revenue || 0), 0);
+  document.querySelector('#table-sets tbody').innerHTML = arr.map(s => `
+    <tr>
+      <td>${s.set_name}</td>
+      <td class="mono">${fmtNum(s.qty)}</td>
+      <td class="mono gold">${fmt(s.revenue)}</td>
+      <td class="mono dim">${totalSetRev > 0 ? (s.revenue / totalSetRev * 100).toFixed(1) + '%' : '-'}</td>
+    </tr>`).join('');
+}
+
+function renderBoughtCardsRows(arr) {
+  document.querySelector('#table-bought-cards tbody').innerHTML = arr.map((c, i) => `
+    <tr>
+      <td class="dim">${i + 1}</td>
+      <td data-card-name="${esc(c.card_name)}">${esc(c.card_name)}</td>
+      <td class="dim">${esc(c.set_name)}</td>
+      <td>${rarityBadge(c.rarity)}</td>
+      <td class="mono">${fmtNum(c.qty_bought)}</td>
+      <td class="mono red">${fmt(c.spent)}</td>
+      <td class="dim">${c.in_orders}</td>
+    </tr>`).join('');
+}
+
+function renderPurchasesRows(arr) {
+  document.querySelector('#table-purchases tbody').innerHTML = arr.map(o => `
+    <tr>
+      <td class="mono dim">${o.order_id}</td>
+      <td class="mono dim">${o.date_of_purchase?.substring(0, 10) || ''}</td>
+      <td>${o.seller_name || o.seller_username}${o.is_professional ? ' <span class="badge badge-pro">PRO</span>' : ''}</td>
+      <td>${o.country}</td>
+      <td class="mono">${o.article_count}</td>
+      <td class="mono red">${fmt(o.merchandise_value)}</td>
+      <td class="mono dim">${fmt(o.total_value)}</td>
+      <td class="mono dim">${fmt(o.trustee_fee)}</td>
+    </tr>`).join('');
+}
+
+function renderPnlRows(arr) {
+  const tbody = document.querySelector('#table-pnl tbody');
+  if (!tbody) { return; }
+  tbody.innerHTML = arr.map(r => `
+    <tr>
+      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
+      <td>${esc(r.set_name || '—')}</td>
+      <td>${r.qty_sold || 0}</td>
+      <td>${fmt(r.total_revenue)}</td>
+      <td>${fmt(r.total_cost)}</td>
+      <td class="${(r.profit || 0) >= 0 ? 'profit-pos' : 'profit-neg'}">${fmt(r.profit)}</td>
+      <td class="${(r.margin_pct || 0) >= 0 ? 'margin-pos' : 'margin-neg'}">${r.margin_pct != null ? r.margin_pct.toFixed(1) + '%' : '—'}</td>
+    </tr>`).join('');
+}
+
+function renderTimeToSellRows(arr) {
+  const tbody = document.querySelector('#table-time-to-sell tbody');
+  if (!tbody) { return; }
+  tbody.innerHTML = arr.map(r => {
+    const dv  = r.days_to_sell;
+    const cls = dv === null ? '' : dv < 14 ? 'days-fast' : dv <= 60 ? 'days-medium' : 'days-slow';
+    return `<tr>
+      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
+      <td>${esc(r.set_name || '—')}</td>
+      <td><span class="days-badge ${cls}">${dv === null ? '—' : dv + 'd'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderInventoryRows(arr) {
+  const searchTerm = (document.getElementById('inventory-search')?.value || '').toLowerCase();
+  const filtered   = searchTerm ? arr.filter(r => r.card_name.toLowerCase().includes(searchTerm)) : arr;
+  const tbody = document.querySelector('#table-inventory tbody');
+  if (!tbody) { return; }
+  tbody.innerHTML = filtered.map(r => `
+    <tr>
+      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
+      <td>${esc(r.set_name || '—')}</td>
+      <td>${r.qty_bought || 0}</td>
+      <td>${r.qty_sold || 0}</td>
+      <td>${r.qty_on_hand || 0}</td>
+      <td>${fmt(r.avg_buy_price)}</td>
+      <td>${fmt(r.estimated_value)}</td>
+    </tr>`).join('');
+}
+
+function renderRepeatBuyersRows(arr) {
+  const tbody = document.querySelector('#table-repeat-buyers tbody');
+  if (!tbody) { return; }
+  tbody.innerHTML = arr.map(b => `
+    <tr>
+      <td>${esc(b.buyer)}</td>
+      <td>${b.order_count || 0}</td>
+      <td>${fmt(b.total_spent)}</td>
+      <td>${fmt(b.avg_order_value)}</td>
+    </tr>`).join('');
+}
+
+function renderSetROIRows(arr) {
+  const tbody = document.querySelector('#table-set-roi tbody');
+  if (!tbody) { return; }
+  tbody.innerHTML = arr.map(r => `
+    <tr>
+      <td>${esc(r.set_name)}</td>
+      <td>${r.cards_sold || 0}</td>
+      <td>${fmt(r.avg_buy_price)}</td>
+      <td>${fmt(r.avg_sell_price)}</td>
+      <td class="${(r.roi_pct || 0) >= 0 ? 'profit-pos' : 'profit-neg'}">${r.roi_pct != null ? r.roi_pct.toFixed(1) + '%' : '—'}</td>
+    </tr>`).join('');
+}
+
+function renderFoilPremiumRows(arr) {
+  const tbody = document.querySelector('#table-foil-premium tbody');
+  if (!tbody) { return; }
+  tbody.innerHTML = arr.map(r => `
+    <tr>
+      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
+      <td>${fmt(r.avg_normal_price)}</td>
+      <td>${fmt(r.avg_foil_price)}</td>
+      <td>${r.foil_premium_pct != null ? r.foil_premium_pct.toFixed(1) + '%' : '—'}</td>
+    </tr>`).join('');
+}
+
+function renderManaboxRows(arr) {
+  const searchTerm = (document.getElementById('manabox-search')?.value || '').toLowerCase();
+  const filtered   = searchTerm
+    ? arr.filter(r => r.card_name.toLowerCase().includes(searchTerm) ||
+                      (r.set_name || '').toLowerCase().includes(searchTerm))
+    : arr;
+  const tbody = document.querySelector('#table-manabox tbody');
+  if (!tbody) { return; }
+  tbody.innerHTML = filtered.map(r => `
+    <tr>
+      <td data-card-name="${esc(r.card_name)}" data-scryfall-id="${esc(r.scryfall_id)}">${esc(r.card_name)}</td>
+      <td class="dim">${esc(r.set_name || r.set_code || '—')}</td>
+      <td class="mono dim">${r.set_code || ''}</td>
+      <td>${r.is_foil ? '<span class="badge badge-uncommon">Foil</span>' : ''}</td>
+      <td>${rarityBadge(r.rarity ? r.rarity.charAt(0).toUpperCase() + r.rarity.slice(1) : '')}</td>
+      <td class="mono">${r.quantity || 1}</td>
+      <td class="mono red">${fmt(r.purchase_price)}</td>
+      <td class="dim">${esc(r.condition || '—')}</td>
+      <td class="dim">${esc(r.language || '—')}</td>
+    </tr>`).join('');
+}
+
 /* ─── Render: Sales dashboard ─────────────────────────────────────────────── */
 function renderDashboard(d) {
   currentData = d;
@@ -267,17 +512,7 @@ function renderDashboard(d) {
   }
 
   /* Top cards table */
-  const totalCardRev = (d.topCards || []).reduce((a, b) => a + (b.revenue || 0), 0);
-  document.querySelector('#table-top-cards tbody').innerHTML = (d.topCards || []).map((c, i) => `
-    <tr>
-      <td class="dim">${i + 1}</td>
-      <td data-card-name="${esc(c.card_name)}">${esc(c.card_name)}</td>
-      <td class="dim">${esc(c.set_name)}</td>
-      <td>${rarityBadge(c.rarity)}</td>
-      <td class="mono">${fmtNum(c.qty_sold)}</td>
-      <td class="mono gold">${fmt(c.revenue)}</td>
-      <td class="mono dim">${totalCardRev > 0 ? (c.revenue / totalCardRev * 100).toFixed(1) + '%' : '-'}</td>
-    </tr>`).join('');
+  renderTopCardsRows(d.topCards || []);
 
   /* Condition chart */
   if (d.byCondition?.length) {
@@ -298,14 +533,7 @@ function renderDashboard(d) {
     lineChart('chart-monthly2', d.profitByMonth.map(r => r.month), d.profitByMonth.map(r => r.revenue));
   }
 
-  const totalSetRev = (d.bySet || []).reduce((a, b) => a + (b.revenue || 0), 0);
-  document.querySelector('#table-sets tbody').innerHTML = (d.bySet || []).map(s => `
-    <tr>
-      <td>${s.set_name}</td>
-      <td class="mono">${fmtNum(s.qty)}</td>
-      <td class="mono gold">${fmt(s.revenue)}</td>
-      <td class="mono dim">${totalSetRev > 0 ? (s.revenue / totalSetRev * 100).toFixed(1) + '%' : '-'}</td>
-    </tr>`).join('');
+  renderSetsRows(d.bySet || []);
 }
 
 /* ─── Orders pagination ────────────────────────────────────────────────────── */
@@ -353,15 +581,15 @@ function renderOrdersPage(orders) {
 
 document.getElementById('orders-search').addEventListener('input', () => {
   orderPage = 1;
-  if (currentData) { renderOrdersPage(currentData.allOrders || []); }
+  if (currentData) { renderOrdersPage(ordersDisplayBase || currentData.allOrders || []); }
 });
 document.getElementById('orders-prev').addEventListener('click', () => {
   orderPage--;
-  if (currentData) { renderOrdersPage(currentData.allOrders || []); }
+  if (currentData) { renderOrdersPage(ordersDisplayBase || currentData.allOrders || []); }
 });
 document.getElementById('orders-next').addEventListener('click', () => {
   orderPage++;
-  if (currentData) { renderOrdersPage(currentData.allOrders || []); }
+  if (currentData) { renderOrdersPage(ordersDisplayBase || currentData.allOrders || []); }
 });
 
 /* ─── Buyer detail modal ──────────────────────────────────────────────────── */
@@ -453,29 +681,10 @@ function renderPurchases(d) {
   }
 
   /* Top bought cards table */
-  document.querySelector('#table-bought-cards tbody').innerHTML = (d.topBoughtCards || []).map((c, i) => `
-    <tr>
-      <td class="dim">${i + 1}</td>
-      <td data-card-name="${esc(c.card_name)}">${esc(c.card_name)}</td>
-      <td class="dim">${esc(c.set_name)}</td>
-      <td>${rarityBadge(c.rarity)}</td>
-      <td class="mono">${fmtNum(c.qty_bought)}</td>
-      <td class="mono red">${fmt(c.spent)}</td>
-      <td class="dim">${c.in_orders}</td>
-    </tr>`).join('');
+  renderBoughtCardsRows(d.topBoughtCards || []);
 
   /* Purchases table */
-  document.querySelector('#table-purchases tbody').innerHTML = (d.allPurchases || []).map(o => `
-    <tr>
-      <td class="mono dim">${o.order_id}</td>
-      <td class="mono dim">${o.date_of_purchase?.substring(0, 10) || ''}</td>
-      <td>${o.seller_name || o.seller_username}${o.is_professional ? ' <span class="badge badge-pro">PRO</span>' : ''}</td>
-      <td>${o.country}</td>
-      <td class="mono">${o.article_count}</td>
-      <td class="mono red">${fmt(o.merchandise_value)}</td>
-      <td class="mono dim">${fmt(o.total_value)}</td>
-      <td class="mono dim">${fmt(o.trustee_fee)}</td>
-    </tr>`).join('');
+  renderPurchasesRows(d.allPurchases || []);
 }
 
 /* ─── Load data ────────────────────────────────────────────────────────────── */
@@ -489,12 +698,15 @@ function buildFilters() {
 }
 
 async function loadData() {
+  ordersDisplayBase = null;
+  stTopCards?.reset(); stSets?.reset(); stOrders?.reset();
   const f    = buildFilters();
   const data = await window.mtg.getStats(f);
   renderDashboard(data);
 }
 
 async function loadPurchaseData() {
+  stBoughtCards?.reset(); stPurchases?.reset();
   const f    = buildFilters();
   const data = await window.mtg.getPurchaseStats(f);
   renderPurchases(data);
@@ -639,10 +851,103 @@ async function init() {
   await Promise.all([loadData(), loadPurchaseData(), loadAnalyticsData(), loadManaboxInventory()]);
 }
 
+/* ─── SortableTable instances ───────────────────────────────────────────────── */
+// One instance per data table. Cols array: null = not sortable (rank column etc.)
+// Initialised synchronously here so click handlers are active from page load.
+
+stTopCards = new SortableTable('table-top-cards',
+  [null, { key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
+         { key: 'rarity', type: 'str' }, { key: 'qty_sold', type: 'num' },
+         { key: 'revenue', type: 'num' }, null],
+  renderTopCardsRows,
+  () => currentData?.topCards || []);
+
+stSets = new SortableTable('table-sets',
+  [{ key: 'set_name', type: 'str' }, { key: 'qty', type: 'num' },
+   { key: 'revenue', type: 'num' }, null],
+  renderSetsRows,
+  () => currentData?.bySet || []);
+
+stOrders = new SortableTable('table-orders',
+  [{ key: 'order_id', type: 'str' }, { key: 'date_of_purchase', type: 'str' },
+   { key: 'buyer_name', type: 'str' }, { key: 'country', type: 'str' },
+   { key: 'article_count', type: 'num' }, { key: 'merchandise_value', type: 'num' },
+   { key: 'total_value', type: 'num' }, { key: 'commission', type: 'num' }],
+  (sorted) => { ordersDisplayBase = sorted; orderPage = 1; renderOrdersPage(sorted); },
+  () => currentData?.allOrders || []);
+
+stBoughtCards = new SortableTable('table-bought-cards',
+  [null, { key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
+         { key: 'rarity', type: 'str' }, { key: 'qty_bought', type: 'num' },
+         { key: 'spent', type: 'num' }, { key: 'in_orders', type: 'num' }],
+  renderBoughtCardsRows,
+  () => purchaseData?.topBoughtCards || []);
+
+stPurchases = new SortableTable('table-purchases',
+  [{ key: 'order_id', type: 'str' }, { key: 'date_of_purchase', type: 'str' },
+   { key: 'seller_name', type: 'str' }, { key: 'country', type: 'str' },
+   { key: 'article_count', type: 'num' }, { key: 'merchandise_value', type: 'num' },
+   { key: 'total_value', type: 'num' }, { key: 'trustee_fee', type: 'num' }],
+  renderPurchasesRows,
+  () => purchaseData?.allPurchases || []);
+
+stPnl = new SortableTable('table-pnl',
+  [{ key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
+   { key: 'qty_sold', type: 'num' }, { key: 'total_revenue', type: 'num' },
+   { key: 'total_cost', type: 'num' }, { key: 'profit', type: 'num' },
+   { key: 'margin_pct', type: 'num' }],
+  renderPnlRows,
+  () => analyticsData?.profitLoss || []);
+
+stTimeToSell = new SortableTable('table-time-to-sell',
+  [{ key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
+   { key: 'days_to_sell', type: 'num' }],
+  renderTimeToSellRows,
+  () => analyticsData?.timeToSell || []);
+
+stInventory = new SortableTable('table-inventory',
+  [{ key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
+   { key: 'qty_bought', type: 'num' }, { key: 'qty_sold', type: 'num' },
+   { key: 'qty_on_hand', type: 'num' }, { key: 'avg_buy_price', type: 'num' },
+   { key: 'estimated_value', type: 'num' }],
+  (sorted) => { sortedInventory = sorted; renderInventoryRows(sorted); },
+  () => analyticsData?.inventory || []);
+
+stRepeatBuyers = new SortableTable('table-repeat-buyers',
+  [{ key: 'buyer', type: 'str' }, { key: 'order_count', type: 'num' },
+   { key: 'total_spent', type: 'num' }, { key: 'avg_order_value', type: 'num' }],
+  renderRepeatBuyersRows,
+  () => analyticsData?.repeatBuyers?.buyers || []);
+
+stSetROI = new SortableTable('table-set-roi',
+  [{ key: 'set_name', type: 'str' }, { key: 'cards_sold', type: 'num' },
+   { key: 'avg_buy_price', type: 'num' }, { key: 'avg_sell_price', type: 'num' },
+   { key: 'roi_pct', type: 'num' }],
+  renderSetROIRows,
+  () => analyticsData?.setROI || []);
+
+stFoilPremium = new SortableTable('table-foil-premium',
+  [{ key: 'card_name', type: 'str' }, { key: 'avg_normal_price', type: 'num' },
+   { key: 'avg_foil_price', type: 'num' }, { key: 'foil_premium_pct', type: 'num' }],
+  renderFoilPremiumRows,
+  () => analyticsData?.foilPremium || []);
+
+stManabox = new SortableTable('table-manabox',
+  [{ key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
+   { key: 'set_code', type: 'str' }, { key: 'is_foil', type: 'str' },
+   { key: 'rarity', type: 'str' }, { key: 'quantity', type: 'num' },
+   { key: 'purchase_price', type: 'num' }, { key: 'condition', type: 'str' },
+   { key: 'language', type: 'str' }],
+  (sorted) => { sortedManabox = sorted; renderManaboxRows(sorted); },
+  () => manaboxItems || []);
+
 init();
 
 /* ─── Analytics loading ────────────────────────────────────────────────────── */
 async function loadAnalyticsData() {
+  sortedInventory = null;
+  stPnl?.reset(); stTimeToSell?.reset(); stInventory?.reset();
+  stRepeatBuyers?.reset(); stSetROI?.reset(); stFoilPremium?.reset();
   const f = buildFilters();
   const data = await window.mtg.getAnalytics(f);
   analyticsData = data;
@@ -650,6 +955,7 @@ async function loadAnalyticsData() {
   renderRepeatBuyers(data.repeatBuyers);
   renderSetROI(data.setROI);
   renderFoilPremium(data.foilPremium);
+  if (data.inventory) { renderInventory(data.inventory); }
 }
 
 /* ─── Render P&L page ──────────────────────────────────────────────────────── */
@@ -685,31 +991,13 @@ function renderAnalytics(d) {
 
   const tbody = document.querySelector('#table-pnl tbody');
   if (tbody) {
-    tbody.innerHTML = profitLoss.map(r => `
-      <tr>
-        <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
-        <td>${esc(r.set_name || '—')}</td>
-        <td>${r.qty_sold || 0}</td>
-        <td>${fmt(r.total_revenue)}</td>
-        <td>${fmt(r.total_cost)}</td>
-        <td class="${(r.profit || 0) >= 0 ? 'profit-pos' : 'profit-neg'}">${fmt(r.profit)}</td>
-        <td class="${(r.margin_pct || 0) >= 0 ? 'margin-pos' : 'margin-neg'}">${r.margin_pct != null ? r.margin_pct.toFixed(1) + '%' : '—'}</td>
-      </tr>`).join('');
+    renderPnlRows(profitLoss);
   }
 
   // Time to sell table
   const ttsTbody = document.querySelector('#table-time-to-sell tbody');
   if (ttsTbody && timeToSell && timeToSell.length > 0) {
-    ttsTbody.innerHTML = timeToSell.map(r => {
-      const d = r.days_to_sell;
-      const cls = d === null ? '' : d < 14 ? 'days-fast' : d <= 60 ? 'days-medium' : 'days-slow';
-      const label = d === null ? '—' : `${d}d`;
-      return `<tr>
-        <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
-        <td>${esc(r.set_name || '—')}</td>
-        <td><span class="days-badge ${cls}">${label}</span></td>
-      </tr>`;
-    }).join('');
+    renderTimeToSellRows(timeToSell);
   }
 }
 
@@ -742,22 +1030,7 @@ function renderInventory(inv) {
     `;
   }
 
-  const searchTerm = (document.getElementById('inventory-search')?.value || '').toLowerCase();
-  const filtered   = searchTerm ? inv.filter(r => r.card_name.toLowerCase().includes(searchTerm)) : inv;
-
-  const tbody = document.querySelector('#table-inventory tbody');
-  if (tbody) {
-    tbody.innerHTML = filtered.map(r => `
-      <tr>
-        <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
-        <td>${esc(r.set_name || '—')}</td>
-        <td>${r.qty_bought || 0}</td>
-        <td>${r.qty_sold || 0}</td>
-        <td>${r.qty_on_hand || 0}</td>
-        <td>${fmt(r.avg_buy_price)}</td>
-        <td>${fmt(r.estimated_value)}</td>
-      </tr>`).join('');
-  }
+  renderInventoryRows(sortedInventory || inv);
 }
 
 /* ─── Render Repeat Buyers panel ──────────────────────────────────────────── */
@@ -784,43 +1057,19 @@ function renderRepeatBuyers(rb) {
     doughnutChart('chart-buyer-distribution', labels, vals);
   }
 
-  const tbody = document.querySelector('#table-repeat-buyers tbody');
-  if (tbody && rb.buyers) {
-    tbody.innerHTML = rb.buyers.map(b => `
-      <tr>
-        <td>${esc(b.buyer)}</td>
-        <td>${b.order_count || 0}</td>
-        <td>${fmt(b.total_spent)}</td>
-        <td>${fmt(b.avg_order_value)}</td>
-      </tr>`).join('');
-  }
+  if (rb.buyers) { renderRepeatBuyersRows(rb.buyers); }
 }
 
 /* ─── Render Set ROI table ─────────────────────────────────────────────────── */
 function renderSetROI(roi) {
-  const tbody = document.querySelector('#table-set-roi tbody');
-  if (!tbody || !roi) return;
-  tbody.innerHTML = roi.map(r => `
-    <tr>
-      <td>${esc(r.set_name)}</td>
-      <td>${r.cards_sold || 0}</td>
-      <td>${fmt(r.avg_buy_price)}</td>
-      <td>${fmt(r.avg_sell_price)}</td>
-      <td class="${(r.roi_pct || 0) >= 0 ? 'profit-pos' : 'profit-neg'}">${r.roi_pct != null ? r.roi_pct.toFixed(1) + '%' : '—'}</td>
-    </tr>`).join('');
+  if (!roi) { return; }
+  renderSetROIRows(roi);
 }
 
 /* ─── Render Foil Premium table ────────────────────────────────────────────── */
 function renderFoilPremium(fp) {
-  const tbody = document.querySelector('#table-foil-premium tbody');
-  if (!tbody || !fp) return;
-  tbody.innerHTML = fp.map(r => `
-    <tr>
-      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
-      <td>${fmt(r.avg_normal_price)}</td>
-      <td>${fmt(r.avg_foil_price)}</td>
-      <td>${r.foil_premium_pct != null ? r.foil_premium_pct.toFixed(1) + '%' : '—'}</td>
-    </tr>`).join('');
+  if (!fp) { return; }
+  renderFoilPremiumRows(fp);
 }
 
 /* ─── Theme helpers ─────────────────────────────────────────────────────────── */
@@ -952,7 +1201,8 @@ async function refreshPresetSelect() {
 
 /* ─── Inventory search ──────────────────────────────────────────────────────── */
 document.getElementById('inventory-search')?.addEventListener('input', () => {
-  if (analyticsData?.inventory) renderInventory(analyticsData.inventory);
+  const base = sortedInventory || analyticsData?.inventory;
+  if (base) { renderInventoryRows(base); }
 });
 
 /* ─── Auto-update UI ────────────────────────────────────────────────────────── */
@@ -995,6 +1245,8 @@ document.getElementById('inventory-search')?.addEventListener('input', () => {
 let manaboxItems = [];
 
 async function loadManaboxInventory() {
+  sortedManabox = null;
+  stManabox?.reset();
   manaboxItems = await window.mtg.getInventoryList().catch(() => []);
   renderManaboxInventory(manaboxItems);
 }
@@ -1003,37 +1255,17 @@ function renderManaboxInventory(items) {
   const emptyEl = document.getElementById('manabox-empty');
   const wrapEl  = document.getElementById('manabox-table-wrap');
   if (!items || items.length === 0) {
-    if (emptyEl) emptyEl.style.display = '';
-    if (wrapEl)  wrapEl.style.display  = 'none';
+    if (emptyEl) { emptyEl.style.display = ''; }
+    if (wrapEl)  { wrapEl.style.display  = 'none'; }
     return;
   }
-  if (emptyEl) emptyEl.style.display = 'none';
-  if (wrapEl)  wrapEl.style.display  = '';
-
-  const searchTerm = (document.getElementById('manabox-search')?.value || '').toLowerCase();
-  const filtered   = searchTerm
-    ? items.filter(r => r.card_name.toLowerCase().includes(searchTerm) ||
-                        (r.set_name || '').toLowerCase().includes(searchTerm))
-    : items;
-
-  const tbody = document.querySelector('#table-manabox tbody');
-  if (!tbody) return;
-  tbody.innerHTML = filtered.map(r => `
-    <tr>
-      <td data-card-name="${esc(r.card_name)}" data-scryfall-id="${esc(r.scryfall_id)}">${esc(r.card_name)}</td>
-      <td class="dim">${esc(r.set_name || r.set_code || '—')}</td>
-      <td class="mono dim">${r.set_code || ''}</td>
-      <td>${r.is_foil ? '<span class="badge badge-uncommon">Foil</span>' : ''}</td>
-      <td>${rarityBadge(r.rarity ? r.rarity.charAt(0).toUpperCase() + r.rarity.slice(1) : '')}</td>
-      <td class="mono">${r.quantity || 1}</td>
-      <td class="mono red">${fmt(r.purchase_price)}</td>
-      <td class="dim">${esc(r.condition || '—')}</td>
-      <td class="dim">${esc(r.language || '—')}</td>
-    </tr>`).join('');
+  if (emptyEl) { emptyEl.style.display = 'none'; }
+  if (wrapEl)  { wrapEl.style.display  = ''; }
+  renderManaboxRows(sortedManabox || items);
 }
 
 document.getElementById('manabox-search')?.addEventListener('input', () => {
-  renderManaboxInventory(manaboxItems);
+  renderManaboxRows(sortedManabox || manaboxItems);
 });
 
 document.getElementById('btn-import-inventory-inline')?.addEventListener('click', async () => {

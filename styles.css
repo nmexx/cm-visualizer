@@ -813,3 +813,19 @@ body {
   text-underline-offset: 3px;
 }
 [data-card-name]:hover { color: var(--gold); }
+
+/* ─── Sortable column headers ─────────────────────────────────────────────── */
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+.data-table th.sortable:hover { color: var(--gold); }
+.data-table th.sortable::after {
+  content: ' ⇅';
+  opacity: 0.3;
+  font-size: 9px;
+  font-family: 'Rajdhani', sans-serif;
+}
+.data-table th.sort-asc::after  { content: ' ▲'; opacity: 1; color: var(--gold); }
+.data-table th.sort-desc::after { content: ' ▼'; opacity: 1; color: var(--gold); }

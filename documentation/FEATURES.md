@@ -8,6 +8,8 @@
 | 1.1.0   | 2025‑01    | Bug fixes, ESLint + Jest setup, GitHub push    |
 | 1.2.0   | 2025‑07    | Purchases dashboard, trend KPIs, pagination, export, offline Chart.js, chokidar auto-sync, missing-month detection |
 | 1.3.0   | 2025‑07    | P&L view, Inventory, Time-to-sell, drag-drop import, light/dark theme, date presets, filter presets, repeat buyers, Set ROI, foil premium, xlsx export, auto-updater |
+| 1.4.0   | 2026‑02    | Separate sold/purchased folders, ManaBox inventory import, Scryfall card hover |
+| 1.5.0   | 2026‑07    | Sortable table columns across all 12 data tables |
 
 ---
 
@@ -399,3 +401,84 @@ CREATE TABLE IF NOT EXISTS manabox_inventory (
 | Version | Date       | Summary |
 |---------|------------|---------|
 | 1.4.0   | 2026-02    | Separate sold/purchased folders, ManaBox inventory import, Scryfall card hover |
+
+---
+
+## Features in v1.5.0
+
+### 1. Sortable Table Columns
+
+All **12 data tables** now have clickable column headers that sort rows in ascending or descending order.
+
+#### Supported Tables
+
+| Table                | Sortable Columns |
+|----------------------|-----------------|
+| Top Cards (Sales)    | Card Name, Set, Rarity, Qty Sold, Revenue |
+| Sets (Sales)         | Set, Cards Sold, Revenue |
+| Orders               | Order ID, Date, Buyer, Country, Articles, Merchandise, Total, Commission |
+| Top Bought Cards     | Card Name, Set, Rarity, Qty Bought, Spent, Orders |
+| All Purchases        | Order ID, Date, Seller, Country, Articles, Merchandise, Total, Trustee Fee |
+| P&L                  | Card, Set, Sold, Revenue, Cost, Profit, Margin |
+| Time to Sell         | Card, Set, Days to Sell |
+| Inventory            | Card, Set, Bought, Sold, On Hand, Avg Buy, Est. Value |
+| Repeat Buyers        | Buyer, Orders, Total Spent, Avg Order |
+| Set ROI              | Set, Bought, Avg Buy, Avg Sell, ROI |
+| Foil Premium         | Card, Normal Avg, Foil Avg, Premium |
+| ManaBox Inventory    | Card, Set, Code, Foil, Rarity, Qty, Buy Price, Cond, Lang |
+
+#### Behaviour
+
+- **Click** a column header once → sort ascending (▲).
+- **Click again** → sort descending (▼).
+- **Unsortable columns** (rank `#` in top-card tables) show no indicator.
+- All columns default to **not sorted** on every data reload (filter apply, import, auto-sync).
+- **Orders table**: sort persists across search and pagination; resets on data reload.
+- **Inventory & ManaBox tables**: sort and text-search compose correctly — sorting is applied first, search filters on top of the sorted result.
+
+#### Interaction With Other Features
+
+| Feature | Behaviour with sort |
+|---|---|
+| Orders search box | Searches within the current sort order |
+| Orders pagination | Paginates the sorted + filtered result |
+| Inventory search box | Filters within the current sort order |
+| ManaBox search box | Filters within the current sort order |
+| Date filter / Apply | Resets all sort indicators, re-renders from scratch |
+
+---
+
+## Architecture Notes (v1.5.0)
+
+### `lib/sortUtils.js`
+
+Pure sort helper with no DOM or Electron dependencies — fully testable.
+
+| Export | Signature | Description |
+|---|---|---|
+| `sortArray` | `(arr, key, type, dir) → arr` | Returns a sorted shallow copy of `arr` by property `key`. `type` is `'num'` or `'str'`; `dir` is `'asc'` or `'desc'`. Nulls / undefined values are treated as `0` for numeric or `''` for string. |
+
+### `SortableTable` class (renderer.js)
+
+Client-side class that wires column headers to a per-table sort state.
+
+**Constructor** `(tableId, cols, renderFn, getDataFn)`
+
+| Arg | Type | Description |
+|---|---|---|
+| `tableId` | `string` | DOM id of the `<table>` |
+| `cols` | `Array<{key,type}\|null>` | One entry per `<th>`. `null` = not sortable (e.g. rank column) |
+| `renderFn` | `(sortedArr) => void` | Re-renders the tbody with the provided sorted array |
+| `getDataFn` | `() => Array` | Returns the current canonical (unsorted) data source |
+
+**Methods**: `reset()` — clears sort indicators and internal state (called on data reload).
+
+### Per-Table Row Render Functions
+
+Each table now has a dedicated `renderXxxRows(arr)` function that writes only the `<tbody>` content. The larger `renderXxx(data)` functions (which handle visibility, KPI cards, charts) call these helpers, making it easy for the sort logic to re-render only the rows without re-computing KPIs or charts.
+
+### Test Coverage (v1.5.0)
+
+- **124 tests** across 6 test files (+25 new)
+- `tests/sorting.test.js`: 25 tests covering all `sortArray` behaviours
+  - Numeric asc/desc, string asc/desc, null handling, immutability, numeric-string parsing
