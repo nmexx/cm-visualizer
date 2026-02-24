@@ -450,6 +450,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 650,
     backgroundColor: '#0a0d14',
+    icon: path.join(__dirname, 'CM_Visualizer.png'),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

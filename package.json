@@ -41,8 +41,9 @@
     ]
   },
   "build": {
-    "appId": "com.mtg.dashboard",
-    "productName": "MTG Dashboard",
+    "appId": "com.nmexx.cm-visualizer",
+    "productName": "CM Visualizer",
+    "icon": "CM_Visualizer.png",
     "files": [
       "main.js",
       "preload.js",
@@ -50,6 +51,7 @@
       "styles.css",
       "renderer.js",
       "package.json",
+      "CM_Visualizer.png",
       "lib/**",
       "vendor/**"
     ],
