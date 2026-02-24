@@ -1,6 +1,6 @@
 # cm-visualizer — Architecture
 
-> Last updated: v1.7.0
+> Last updated: v1.7.1
 
 ## Overview
 
@@ -99,7 +99,7 @@ Each handler module exports a single `register(ctx)` function. This pattern:
 
 | Module                 | Channels covered |
 |------------------------|-----------------|
-| `fileHandlers.js`      | SELECT_FOLDER, IMPORT_FOLDER, IMPORT_FILE, SET_FOLDER_SOLD, IMPORT_PURCHASE_FILE, IMPORT_PURCHASE_FOLDER, SET_FOLDER_PURCHASED, IMPORT_INVENTORY_FILE, SET_INVENTORY_FILE, GET_INVENTORY_LIST, EXPORT_CSV, EXPORT_XLSX |
+| `fileHandlers.js`      | SELECT_FOLDER, IMPORT_FOLDER, IMPORT_FILE, **IMPORT_FILE_PATH** (drag-drop), SET_FOLDER_SOLD, IMPORT_PURCHASE_FILE, IMPORT_PURCHASE_FOLDER, SET_FOLDER_PURCHASED, IMPORT_INVENTORY_FILE, SET_INVENTORY_FILE, GET_INVENTORY_LIST, EXPORT_CSV, EXPORT_XLSX |
 | `settingsHandlers.js`  | GET_SETTINGS, GET_DB_PATH, SET_THEME, SAVE_FILTER_PRESET, GET_FILTER_PRESETS, DELETE_FILTER_PRESET, CLEAR_DATABASE, CHECK_FOR_UPDATE, INSTALL_UPDATE |
 | `analyticsHandlers.js` | GET_STATS, GET_PURCHASE_STATS, GET_ANALYTICS, DOWNLOAD_PRICE_GUIDE |
 
@@ -108,8 +108,18 @@ Each handler module exports a single `register(ctx)` function. This pattern:
 ## IPC Channel Constants (`lib/ipcChannels.js`)
 
 All channel name strings are defined exactly once as a frozen `Object.freeze({})`
-export. Both `main.js` (`.handle`) and `preload.js` (`.invoke` / `.on`) import
-this object, eliminating typo-related bugs.
+export used by `main.js` (`.handle`) and `ipc/` handler modules.
+
+> ⚠️ **Preload sandbox constraint** — Electron 20+ enables `sandbox: true` for
+> renderer processes by default. Inside a sandboxed preload script **only**
+> `require('electron')` works; `require()` for any relative local file
+> (including `./lib/ipcChannels`) silently fails, leaving `window.mtg`
+> undefined and making every button unresponsive.
+>
+> **Solution**: `preload.js` declares its own inline copy of the channel
+> constants as a plain `const CH = { ... }` literal. The copy must be kept in
+> sync with `lib/ipcChannels.js` manually — a comment at the top of `preload.js`
+> reminds maintainers of this.
 
 ---
 
@@ -197,6 +207,30 @@ No circular dependencies.
 
 `renderer/state.js` exports a single mutable object and `PAGE_SIZE`. All modules
 that need to read or write cross-cutting state import this object directly.
+
+---
+
+## Build Notes
+
+### Native Module ABI (`better-sqlite3`)
+
+`better-sqlite3` is a native Node addon. The system Node.js and the Node.js
+embedded inside Electron use **different ABI versions** (e.g. Node v24 = ABI 137,
+Electron 29 = ABI 121). Using a binary compiled for the wrong ABI crashes the
+main process with an `UnhandledPromiseRejection` on startup.
+
+**Correct workflow:**
+
+1. After every `npm install`, run `npm run rebuild` (calls `electron-rebuild -f -w better-sqlite3`) to compile the addon against Electron's ABI.
+2. The `"postinstall"` script in `package.json` runs `electron-builder install-app-deps` automatically on `npm install`.
+3. `"npmRebuild": false` in the `"build"` config prevents electron-builder from overwriting the correctly compiled binary with a prebuilt download during packaging.
+
+### Packaging Files
+
+All application source directories must be listed in the `"files"` array of the
+`"build"` config in `package.json`. When new top-level directories are added
+(e.g. `ipc/`, `renderer/`), they must be explicitly added or the packaged app
+will fail to start with `Cannot find module`.
 
 ---
 
