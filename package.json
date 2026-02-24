@@ -53,6 +53,8 @@
       "package.json",
       "CM_Visualizer.png",
       "lib/**",
+      "ipc/**",
+      "renderer/**",
       "vendor/**"
     ],
     "win": {
