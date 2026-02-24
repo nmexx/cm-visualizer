@@ -66,6 +66,17 @@ function register(ctx) {
     return { totalInserted, totalSkipped, results };
   });
 
+  // ─── Import sold-orders – programmatic file path (drag-drop) ──────────────
+  ipcMain.handle(CH.IMPORT_FILE_PATH, async (_, filePath) => {
+    if (!filePath || !fs.existsSync(filePath)) { return { error: 'File not found' }; }
+    try {
+      const r = importCSVFileWithDB(filePath);
+      return { totalInserted: r.inserted, totalSkipped: r.skipped };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
   // ─── Import sold-orders – file picker ─────────────────────────────────────
   ipcMain.handle(CH.IMPORT_FILE, async () => {
     const win = getMainWindow();
