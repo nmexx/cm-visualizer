@@ -1,6 +1,6 @@
 # cm-visualizer — Architecture
 
-> Last updated: v1.7.1
+> Last updated: v1.7.2
 
 ## Overview
 
@@ -102,6 +102,37 @@ Each handler module exports a single `register(ctx)` function. This pattern:
 | `fileHandlers.js`      | SELECT_FOLDER, IMPORT_FOLDER, IMPORT_FILE, **IMPORT_FILE_PATH** (drag-drop), SET_FOLDER_SOLD, IMPORT_PURCHASE_FILE, IMPORT_PURCHASE_FOLDER, SET_FOLDER_PURCHASED, IMPORT_INVENTORY_FILE, SET_INVENTORY_FILE, GET_INVENTORY_LIST, EXPORT_CSV, EXPORT_XLSX |
 | `settingsHandlers.js`  | GET_SETTINGS, GET_DB_PATH, SET_THEME, SAVE_FILTER_PRESET, GET_FILTER_PRESETS, DELETE_FILTER_PRESET, CLEAR_DATABASE, CHECK_FOR_UPDATE, INSTALL_UPDATE |
 | `analyticsHandlers.js` | GET_STATS, GET_PURCHASE_STATS, GET_ANALYTICS, DOWNLOAD_PRICE_GUIDE |
+
+### `GET_ANALYTICS` return shape
+
+The `GET_ANALYTICS` handler returns an object. The `inventory` key is **not** a
+raw array — it is wrapped as:
+
+```js
+{ items: InventoryRow[], totalValue: number }
+```
+
+This lets the renderer distinguish between "no data" (`items.length === 0`) and a
+cache miss, and avoids recomputing `totalValue` inside the renderer.
+
+> **Rule**: whenever a handler returns a collection that the renderer uses to
+> toggle an empty-state, wrap it as `{ items, ...aggregates }` rather than a
+> bare array, so the renderer gets both the rows and the pre-computed totals in
+> one IPC round-trip.
+
+### Renderer empty-state / visibility pattern
+
+Each dashboard section has two DOM elements:
+
+| Element | Default | Shown when |
+|---------|---------|------------|
+| `#<tab>-empty-state` | `display:flex` | no data |
+| `#<tab>-content` / `#<tab>-dashboard` | `display:none` | has data |
+
+The render functions (e.g. `renderPurchases`, `renderInventory`) are responsible
+for toggling both. Table-level helpers (e.g. `renderManaboxRows`) additionally
+toggle their own `#<id>-empty` / `#<id>-table-wrap` pair so the table's
+built-in empty state is always in sync.
 
 ---
 

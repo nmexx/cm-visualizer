@@ -51,11 +51,36 @@ export function renderFoilPremium(fp) {
 
 export function renderInventory(inv) {
   if (!inv || !inv.items) { return; }
+  const hasData = inv.items.length > 0;
+  const emptyEl = document.getElementById('inventory-empty-state');
+  const dashEl  = document.getElementById('inventory-dashboard');
+  if (emptyEl) emptyEl.style.display = hasData ? 'none'  : 'flex';
+  if (dashEl)  dashEl.style.display  = hasData ? 'block' : 'none';
+  if (!hasData) { return; }
+
   state.sortedInventory = inv.items;
   renderInventoryRows(inv.items);
 
   const el = document.getElementById('inventory-count');
   if (el) { el.textContent = `${fmtNum(inv.items.length)} cards · ${fmt(inv.totalValue)} total value`; }
+
+  // KPI grid
+  const kpiEl = document.getElementById('inventory-kpi-grid');
+  if (kpiEl) {
+    const totalQty  = inv.items.reduce((s, r) => s + (r.qty_on_hand  || 0), 0);
+    const totalCost = inv.items.reduce((s, r) => s + (r.total_cost   || 0), 0);
+    const mktValue  = inv.items.reduce((s, r) => s + (r.market_value || 0), 0);
+    const kpis = [
+      { label: 'Unique Cards',  value: fmtNum(inv.items.length), cls: '' },
+      { label: 'Total on Hand', value: fmtNum(totalQty),         cls: '' },
+      { label: 'Total Cost',    value: fmt(totalCost),            cls: 'red' },
+      { label: 'Est. Value',    value: fmt(inv.totalValue),       cls: 'gold' },
+      { label: 'Mkt Value',     value: mktValue > 0 ? fmt(mktValue) : '—', cls: mktValue > 0 ? 'gold' : '' },
+    ];
+    kpiEl.innerHTML = kpis.map(k =>
+      `<div class="kpi"><div class="kpi-label">${k.label}</div><div class="kpi-value ${k.cls}">${k.value}</div></div>`
+    ).join('');
+  }
 
   // Bind search once (use .replaceWith to avoid stacking listeners)
   const searchEl = document.getElementById('inventory-search');

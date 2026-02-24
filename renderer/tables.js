@@ -190,6 +190,13 @@ export function renderManaboxRows(arr) {
     ? arr.filter(r => r.card_name.toLowerCase().includes(searchTerm) ||
                       (r.set_name || '').toLowerCase().includes(searchTerm))
     : arr;
+
+  // Toggle empty-state / table visibility
+  const emptyEl = document.getElementById('manabox-empty');
+  const wrapEl  = document.getElementById('manabox-table-wrap');
+  if (emptyEl) emptyEl.style.display = filtered.length ? 'none'  : 'block';
+  if (wrapEl)  wrapEl.style.display  = filtered.length ? 'block' : 'none';
+
   const tbody = document.querySelector('#table-manabox tbody');
   if (!tbody) { return; }
   tbody.innerHTML = filtered.map(r => `

@@ -82,9 +82,14 @@ function register(ctx) {
       FROM purchase_items i JOIN purchases p ON p.order_id = i.order_id
     `).all();
 
+    const inventoryItems = enrichInventoryWithMarketPrices(
+      computeInventory(allBoughtItems, allSoldItems), priceGuideCache
+    );
+    const inventoryTotalValue = inventoryItems.reduce((s, r) => s + (r.estimated_value || 0), 0);
+
     return {
       profitLoss:   computeProfitLoss(soldItems, boughtItems),
-      inventory:    enrichInventoryWithMarketPrices(computeInventory(allBoughtItems, allSoldItems), priceGuideCache),
+      inventory:    { items: inventoryItems, totalValue: inventoryTotalValue },
       repeatBuyers: computeRepeatBuyers(allOrders),
       setROI:       computeSetROI(allSoldItems, allBoughtItems),
       foilPremium:  computeFoilPremium(soldItems),
