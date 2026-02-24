@@ -7,6 +7,7 @@
   "scripts": {
     "start": "electron .",
     "build": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "postinstall": "electron-builder install-app-deps",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -44,6 +45,7 @@
     "appId": "com.nmexx.cm-visualizer",
     "productName": "CM Visualizer",
     "icon": "CM_Visualizer.png",
+    "npmRebuild": false,
     "files": [
       "main.js",
       "preload.js",
