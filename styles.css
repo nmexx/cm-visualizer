@@ -84,6 +84,8 @@ body {
 .btn.danger:hover { background: rgba(231,76,60,0.1); }
 .btn.buy { border-color: rgba(61,142,240,0.4); color: var(--blue); }
 .btn.buy:hover { background: rgba(61,142,240,0.1); }
+.btn.inv { border-color: rgba(46,204,113,0.4); color: #2ecc71; }
+.btn.inv:hover { background: rgba(46,204,113,0.08); }
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
@@ -775,3 +777,39 @@ body {
 ══════════════════════════════════════════════════════════════════════ */
 .kpi-value.purple { color: var(--purple); }
 
+
+/* ─── Scryfall card image tooltip ─────────────────────────────────────────── */
+#scryfall-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  background: #0e1520;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+  width: 240px;
+}
+#scryfall-tooltip-img {
+  width: 228px;
+  border-radius: 6px;
+  display: none;
+}
+#scryfall-tooltip-spinner {
+  width: 228px;
+  height: 310px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ─── Hoverable card name cells ───────────────────────────────────────────── */
+[data-card-name] {
+  cursor: pointer;
+  text-decoration: underline dotted var(--gold);
+  text-underline-offset: 3px;
+}
+[data-card-name]:hover { color: var(--gold); }

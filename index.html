@@ -53,6 +53,7 @@
     <button class="btn icon-btn" id="btn-theme-toggle" title="Toggle light/dark theme">&#9788;</button>
     <button class="btn" id="btn-import-file">+ Sales CSV</button>
     <button class="btn buy" id="btn-import-purchases">+ Purchases CSV</button>
+    <button class="btn inv" id="btn-import-inventory" title="Import ManaBox inventory CSV">+ Inventory</button>
     <button class="btn primary" id="btn-import-folder">&#8635; Sync Folder</button>
   </div>
 </div>
@@ -333,10 +334,27 @@
           </div>
           <div style="overflow-x:auto">
             <table class="data-table" id="table-inventory">
-              <thead><tr><th>Card</th><th>Set</th><th>Rarity</th><th>Bought</th><th>Sold</th><th>On Hand</th><th>Avg Buy</th><th>Est. Value</th></tr></thead>
+              <thead><tr><th>Card</th><th>Set</th><th>Bought</th><th>Sold</th><th>On Hand</th><th>Avg Buy</th><th>Est. Value</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- ManaBox inventory import panel (always visible inside inventory page) -->
+      <div class="panel" id="manabox-panel" style="margin-top:16px">
+        <div class="panel-title">ManaBox Inventory</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn inv" id="btn-import-inventory-inline">+ Import ManaBox CSV</button>
+          <input type="text" class="search-input" id="manabox-search" placeholder="Search card or set&#8230;" style="margin-bottom:0;width:220px">
+          <button class="btn" id="btn-export-manabox-xlsx">&#8595; XLSX</button>
+        </div>
+        <div id="manabox-empty" style="padding:24px;text-align:center;color:var(--text-dim);font-size:13px">No inventory imported yet. Use “+ Import ManaBox CSV” or the topbar button.</div>
+        <div style="overflow-x:auto" id="manabox-table-wrap" style="display:none">
+          <table class="data-table" id="table-manabox">
+            <thead><tr><th>Card</th><th>Set</th><th>Code</th><th>Foil</th><th>Rarity</th><th>Qty</th><th>Buy Price</th><th>Cond</th><th>Lang</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -354,16 +372,21 @@
       <div class="settings-group">
         <div class="settings-title">Data Import</div>
         <div class="settings-row">
-          <label>CSV Folder</label>
-          <div class="path-display" id="setting-folder">Not configured</div>
-          <button class="btn" id="btn-set-folder">Browse</button>
+          <label>Sold CSV Folder</label>
+          <div class="path-display" id="setting-folder-sold">Not configured</div>
+          <button class="btn" id="btn-set-folder-sold">Browse</button>
+        </div>
+        <div class="settings-row">
+          <label>Purchased CSV Folder</label>
+          <div class="path-display" id="setting-folder-purchased">Not configured</div>
+          <button class="btn" id="btn-set-folder-purchased">Browse</button>
         </div>
         <div class="settings-row">
           <label>Database Path</label>
           <div class="path-display" id="setting-db-path">Loading...</div>
         </div>
         <div class="settings-row">
-          <label style="color:var(--text-dim);font-size:12px">Auto-sync is active when a folder is configured. New CSV files added to the folder are imported automatically.</label>
+          <label style="color:var(--text-dim);font-size:12px">Auto-sync watches each configured folder and imports new CSV files automatically.</label>
         </div>
       </div>
       <div class="settings-group">
@@ -430,5 +453,11 @@
 
 <script src="vendor/chart.umd.min.js"></script>
 <script src="renderer.js"></script>
+
+<!-- Scryfall card image tooltip -->
+<div id="scryfall-tooltip">
+  <div id="scryfall-tooltip-spinner">Loading…</div>
+  <img id="scryfall-tooltip-img" src="" alt="Card preview">
+</div>
 </body>
 </html>

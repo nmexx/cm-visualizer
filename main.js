@@ -6,6 +6,7 @@ const XLSX = require('xlsx');
 const { sanitizeDate } = require('./lib/parser');
 const { importCSVFile } = require('./lib/importer');
 const { importPurchasedCSVFile } = require('./lib/purchaseImporter');
+const { importInventoryFile }    = require('./lib/inventoryImporter');
 const {
   computeProfitLoss, computeInventory, computeRepeatBuyers,
   computeSetROI, computeFoilPremium, computeTimeToSell,
@@ -22,7 +23,8 @@ try {
 let mainWindow;
 let db;
 let dbPath;
-let watcher = null;
+let watcherSold      = null;
+let watcherPurchased = null;
 
 // ─── Database setup ───────────────────────────────────────────────────────────
 function initDatabase() {
@@ -105,6 +107,24 @@ function initDatabase() {
       price          REAL,
       FOREIGN KEY (order_id) REFERENCES purchases(order_id)
     );
+
+    CREATE TABLE IF NOT EXISTS manabox_inventory (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_name         TEXT NOT NULL,
+      set_code          TEXT,
+      set_name          TEXT,
+      collector_num     TEXT,
+      is_foil           INTEGER DEFAULT 0,
+      rarity            TEXT,
+      quantity          INTEGER DEFAULT 1,
+      manabox_id        TEXT,
+      scryfall_id       TEXT,
+      purchase_price    REAL,
+      condition         TEXT,
+      language          TEXT,
+      purchase_currency TEXT,
+      source_file       TEXT
+    );
   `);
 
   return db;
@@ -119,21 +139,41 @@ function importPurchasedCSVFileWithDB(filePath) {
   return importPurchasedCSVFile(db, filePath);
 }
 
+function importInventoryFileWithDB(filePath) {
+  return importInventoryFile(db, filePath);
+}
+
 // ─── Chokidar auto-watch ──────────────────────────────────────────────────────
-function startWatcher(folderPath) {
-  if (watcher) { watcher.close(); watcher = null; }
-  watcher = chokidar.watch(path.join(folderPath, '*.csv'), {
+function startSoldWatcher(folderPath) {
+  if (watcherSold) { watcherSold.close(); watcherSold = null; }
+  watcherSold = chokidar.watch(path.join(folderPath, '*.csv'), {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 500 }
   });
-  const handleFile = (filePath) => {
+  const handleFile = (fp) => {
     try {
-      const r = importCSVFileWithDB(filePath);
-      mainWindow?.webContents.send('auto-import', { file: path.basename(filePath), ...r });
-    } catch (e) { console.error('Auto-import error:', e.message); }
+      const r = importCSVFileWithDB(fp);
+      mainWindow?.webContents.send('auto-import', { file: path.basename(fp), ...r });
+    } catch (e) { console.error('Auto-import (sold) error:', e.message); }
   };
-  watcher.on('add', handleFile);
-  watcher.on('change', handleFile);
+  watcherSold.on('add', handleFile);
+  watcherSold.on('change', handleFile);
+}
+
+function startPurchasedWatcher(folderPath) {
+  if (watcherPurchased) { watcherPurchased.close(); watcherPurchased = null; }
+  watcherPurchased = chokidar.watch(path.join(folderPath, '*.csv'), {
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 500 }
+  });
+  const handleFile = (fp) => {
+    try {
+      const r = importPurchasedCSVFileWithDB(fp);
+      mainWindow?.webContents.send('auto-import-purchase', { file: path.basename(fp), ...r });
+    } catch (e) { console.error('Auto-import (purchased) error:', e.message); }
+  };
+  watcherPurchased.on('add', handleFile);
+  watcherPurchased.on('change', handleFile);
 }
 
 // ─── Analytics helpers ────────────────────────────────────────────────────────
@@ -466,9 +506,14 @@ app.whenReady().then(() => {
   initDatabase();
   createWindow();
 
-  // Restore auto-watch if a folder was previously configured
-  const savedFolder = db.prepare(`SELECT value FROM settings WHERE key = 'csv_folder'`).get();
-  if (savedFolder?.value) {startWatcher(savedFolder.value);}
+  // Restore sold watcher (backward compat: also check old 'csv_folder' key)
+  const savedSoldFolder =
+    db.prepare(`SELECT value FROM settings WHERE key = 'csv_folder_sold'`).get() ||
+    db.prepare(`SELECT value FROM settings WHERE key = 'csv_folder'`).get();
+  if (savedSoldFolder?.value) { startSoldWatcher(savedSoldFolder.value); }
+
+  const savedPurchasedFolder = db.prepare(`SELECT value FROM settings WHERE key = 'csv_folder_purchased'`).get();
+  if (savedPurchasedFolder?.value) { startPurchasedWatcher(savedPurchasedFolder.value); }
 
   // Auto-updater: check on startup in production
   if (autoUpdater && app.isPackaged) {
@@ -486,7 +531,8 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
-  if (watcher) { watcher.close(); }
+  if (watcherSold)      { watcherSold.close(); }
+  if (watcherPurchased) { watcherPurchased.close(); }
 });
 
 app.on('window-all-closed', () => {
@@ -524,8 +570,8 @@ ipcMain.handle('import-folder', async (_, folderPath) => {
     }
   }
 
-  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('csv_folder', ?)`).run(folderPath);
-  startWatcher(folderPath);
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('csv_folder_sold', ?)`).run(folderPath);
+  startSoldWatcher(folderPath);
 
   return { totalInserted, totalSkipped, results };
 });
@@ -596,6 +642,8 @@ ipcMain.handle('import-purchase-folder', async (_, folderPath) => {
       results.push({ file, ...r });
     } catch (e) { results.push({ file, error: e.message }); }
   }
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('csv_folder_purchased', ?)`).run(folderPath);
+  startPurchasedWatcher(folderPath);
   return { totalInserted, totalSkipped, results };
 });
 
@@ -680,9 +728,68 @@ ipcMain.handle('set-theme', async (_, theme) => {
   return { ok: true };
 });
 
+ipcMain.handle('set-folder-sold', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Select folder to auto-watch for Sold CSV exports'
+  });
+  if (result.canceled) {return null;}
+  const folderPath = result.filePaths[0];
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('csv_folder_sold', ?)`).run(folderPath);
+  startSoldWatcher(folderPath);
+  return folderPath;
+});
+
+ipcMain.handle('set-folder-purchased', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Select folder to auto-watch for Purchased CSV exports'
+  });
+  if (result.canceled) {return null;}
+  const folderPath = result.filePaths[0];
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('csv_folder_purchased', ?)`).run(folderPath);
+  startPurchasedWatcher(folderPath);
+  return folderPath;
+});
+
+ipcMain.handle('import-inventory-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+    title: 'Select ManaBox Inventory CSV(s)'
+  });
+  if (result.canceled) {return null;}
+
+  let totalInserted = 0, totalSkipped = 0;
+  const results = [];
+  for (const filePath of result.filePaths) {
+    try {
+      const r = importInventoryFileWithDB(filePath);
+      totalInserted += r.inserted;
+      totalSkipped  += r.skipped;
+      results.push({ file: path.basename(filePath), ...r });
+    } catch (e) {
+      results.push({ file: path.basename(filePath), error: e.message });
+    }
+  }
+  return { totalInserted, totalSkipped, results };
+});
+
+ipcMain.handle('get-inventory-list', async () => {
+  return db.prepare(`
+    SELECT card_name, set_code, set_name, collector_num, is_foil, rarity,
+           quantity, manabox_id, scryfall_id, purchase_price,
+           condition, language, purchase_currency, source_file
+    FROM manabox_inventory
+    ORDER BY card_name ASC
+  `).all();
+});
+
 ipcMain.handle('get-settings', async () => {
   const rows = db.prepare(`SELECT key, value FROM settings`).all();
-  return Object.fromEntries(rows.map(r => [r.key, r.value]));
+  const settings = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  settings.version = app.getVersion();
+  return settings;
 });
 
 ipcMain.handle('get-db-path', async () => dbPath);

@@ -271,8 +271,8 @@ function renderDashboard(d) {
   document.querySelector('#table-top-cards tbody').innerHTML = (d.topCards || []).map((c, i) => `
     <tr>
       <td class="dim">${i + 1}</td>
-      <td>${c.card_name}</td>
-      <td class="dim">${c.set_name}</td>
+      <td data-card-name="${esc(c.card_name)}">${esc(c.card_name)}</td>
+      <td class="dim">${esc(c.set_name)}</td>
       <td>${rarityBadge(c.rarity)}</td>
       <td class="mono">${fmtNum(c.qty_sold)}</td>
       <td class="mono gold">${fmt(c.revenue)}</td>
@@ -456,8 +456,8 @@ function renderPurchases(d) {
   document.querySelector('#table-bought-cards tbody').innerHTML = (d.topBoughtCards || []).map((c, i) => `
     <tr>
       <td class="dim">${i + 1}</td>
-      <td>${c.card_name}</td>
-      <td class="dim">${c.set_name}</td>
+      <td data-card-name="${esc(c.card_name)}">${esc(c.card_name)}</td>
+      <td class="dim">${esc(c.set_name)}</td>
       <td>${rarityBadge(c.rarity)}</td>
       <td class="mono">${fmtNum(c.qty_bought)}</td>
       <td class="mono red">${fmt(c.spent)}</td>
@@ -512,8 +512,8 @@ document.getElementById('btn-import-file').addEventListener('click', async () =>
 
 document.getElementById('btn-import-folder').addEventListener('click', async () => {
   const settings = await window.mtg.getSettings();
-  const folder   = settings.csv_folder;
-  if (!folder) { toast('No folder configured — go to Settings first', 'error'); return; }
+  const folder   = settings.csv_folder_sold || settings.csv_folder;
+  if (!folder) { toast('No sold folder configured — go to Settings first', 'error'); return; }
   showLoading(true);
   const result = await window.mtg.importFolder(folder);
   showLoading(false);
@@ -529,6 +529,15 @@ document.getElementById('btn-import-purchases').addEventListener('click', async 
   if (!result) { return; }
   toast(`Purchases imported: ${result.totalInserted} new, ${result.totalSkipped} existing`);
   loadPurchaseData();
+});
+
+document.getElementById('btn-import-inventory').addEventListener('click', async () => {
+  showLoading(true);
+  const result = await window.mtg.importInventoryFile();
+  showLoading(false);
+  if (!result) { return; }
+  toast(`Inventory imported: ${result.totalInserted} new, ${result.totalSkipped} existing`);
+  loadManaboxInventory();
 });
 
 /* ─── Filter buttons ──────────────────────────────────────────────────────── */
@@ -563,16 +572,23 @@ document.getElementById('btn-export-purchases').addEventListener('click', async 
 });
 
 /* ─── Settings ────────────────────────────────────────────────────────────── */
-document.getElementById('btn-set-folder').addEventListener('click', async () => {
-  const folder = await window.mtg.selectFolder();
+document.getElementById('btn-set-folder-sold').addEventListener('click', async () => {
+  const folder = await window.mtg.setFolderSold();
   if (!folder) { return; }
-  document.getElementById('setting-folder').textContent = folder;
+  document.getElementById('setting-folder-sold').textContent = folder;
   showLoading(true);
   const result = await window.mtg.importFolder(folder);
   showLoading(false);
   if (result.error) { toast(result.error, 'error'); return; }
-  toast(`Folder set. Imported ${result.totalInserted} orders.`);
+  toast(`Sold folder set. Imported ${result.totalInserted} orders.`);
   loadData();
+});
+
+document.getElementById('btn-set-folder-purchased').addEventListener('click', async () => {  
+  const folder = await window.mtg.setFolderPurchased();
+  if (!folder) { return; }
+  document.getElementById('setting-folder-purchased').textContent = folder;
+  toast(`Purchased folder set. Auto-sync active for: ${folder.split(/[\\/]/).pop()}`);
 });
 
 document.getElementById('btn-clear-db').addEventListener('click', async () => {
@@ -589,6 +605,11 @@ window.mtg.onAutoImport(data => {
   loadData();
   loadAnalyticsData();
 });
+window.mtg.onAutoImportPurchase(data => {
+  toast(`Auto-imported purchases: ${data.file} (+${data.inserted} orders)`);
+  loadPurchaseData();
+  loadAnalyticsData();
+});
 
 /* ─── Init ─────────────────────────────────────────────────────────────────── */
 async function init() {
@@ -597,8 +618,13 @@ async function init() {
     window.mtg.getDbPath()
   ]);
 
-  if (settings.csv_folder) {
-    document.getElementById('setting-folder').textContent = settings.csv_folder;
+  const soldFolder = settings.csv_folder_sold || settings.csv_folder;
+  const purchasedFolder = settings.csv_folder_purchased;
+  if (soldFolder) {
+    document.getElementById('setting-folder-sold').textContent = soldFolder;
+  }
+  if (purchasedFolder) {
+    document.getElementById('setting-folder-purchased').textContent = purchasedFolder;
   }
   document.getElementById('setting-db-path').textContent = dbPath || '';
   document.getElementById('db-path-status').textContent  = dbPath ? dbPath.split(/[\\/]/).pop() : '';
@@ -610,7 +636,7 @@ async function init() {
   // Load filter presets
   await refreshPresetSelect();
 
-  await Promise.all([loadData(), loadPurchaseData(), loadAnalyticsData()]);
+  await Promise.all([loadData(), loadPurchaseData(), loadAnalyticsData(), loadManaboxInventory()]);
 }
 
 init();
@@ -661,7 +687,7 @@ function renderAnalytics(d) {
   if (tbody) {
     tbody.innerHTML = profitLoss.map(r => `
       <tr>
-        <td>${esc(r.card_name)}</td>
+        <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
         <td>${esc(r.set_name || '—')}</td>
         <td>${r.qty_sold || 0}</td>
         <td>${fmt(r.total_revenue)}</td>
@@ -679,7 +705,7 @@ function renderAnalytics(d) {
       const cls = d === null ? '' : d < 14 ? 'days-fast' : d <= 60 ? 'days-medium' : 'days-slow';
       const label = d === null ? '—' : `${d}d`;
       return `<tr>
-        <td>${esc(r.card_name)}</td>
+        <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
         <td>${esc(r.set_name || '—')}</td>
         <td><span class="days-badge ${cls}">${label}</span></td>
       </tr>`;
@@ -723,7 +749,7 @@ function renderInventory(inv) {
   if (tbody) {
     tbody.innerHTML = filtered.map(r => `
       <tr>
-        <td>${esc(r.card_name)}</td>
+        <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
         <td>${esc(r.set_name || '—')}</td>
         <td>${r.qty_bought || 0}</td>
         <td>${r.qty_sold || 0}</td>
@@ -790,7 +816,7 @@ function renderFoilPremium(fp) {
   if (!tbody || !fp) return;
   tbody.innerHTML = fp.map(r => `
     <tr>
-      <td>${esc(r.card_name)}</td>
+      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
       <td>${fmt(r.avg_normal_price)}</td>
       <td>${fmt(r.avg_foil_price)}</td>
       <td>${r.foil_premium_pct != null ? r.foil_premium_pct.toFixed(1) + '%' : '—'}</td>
@@ -963,4 +989,160 @@ document.getElementById('inventory-search')?.addEventListener('input', () => {
   // Show current version in settings
   const verEl = document.getElementById('app-version');
   if (verEl) window.mtg.getSettings().then(s => { if (s?.version) verEl.textContent = s.version; });
+})();
+
+/* ─── ManaBox inventory ─────────────────────────────────────────────────────── */
+let manaboxItems = [];
+
+async function loadManaboxInventory() {
+  manaboxItems = await window.mtg.getInventoryList().catch(() => []);
+  renderManaboxInventory(manaboxItems);
+}
+
+function renderManaboxInventory(items) {
+  const emptyEl = document.getElementById('manabox-empty');
+  const wrapEl  = document.getElementById('manabox-table-wrap');
+  if (!items || items.length === 0) {
+    if (emptyEl) emptyEl.style.display = '';
+    if (wrapEl)  wrapEl.style.display  = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (wrapEl)  wrapEl.style.display  = '';
+
+  const searchTerm = (document.getElementById('manabox-search')?.value || '').toLowerCase();
+  const filtered   = searchTerm
+    ? items.filter(r => r.card_name.toLowerCase().includes(searchTerm) ||
+                        (r.set_name || '').toLowerCase().includes(searchTerm))
+    : items;
+
+  const tbody = document.querySelector('#table-manabox tbody');
+  if (!tbody) return;
+  tbody.innerHTML = filtered.map(r => `
+    <tr>
+      <td data-card-name="${esc(r.card_name)}" data-scryfall-id="${esc(r.scryfall_id)}">${esc(r.card_name)}</td>
+      <td class="dim">${esc(r.set_name || r.set_code || '—')}</td>
+      <td class="mono dim">${r.set_code || ''}</td>
+      <td>${r.is_foil ? '<span class="badge badge-uncommon">Foil</span>' : ''}</td>
+      <td>${rarityBadge(r.rarity ? r.rarity.charAt(0).toUpperCase() + r.rarity.slice(1) : '')}</td>
+      <td class="mono">${r.quantity || 1}</td>
+      <td class="mono red">${fmt(r.purchase_price)}</td>
+      <td class="dim">${esc(r.condition || '—')}</td>
+      <td class="dim">${esc(r.language || '—')}</td>
+    </tr>`).join('');
+}
+
+document.getElementById('manabox-search')?.addEventListener('input', () => {
+  renderManaboxInventory(manaboxItems);
+});
+
+document.getElementById('btn-import-inventory-inline')?.addEventListener('click', async () => {
+  showLoading(true);
+  const result = await window.mtg.importInventoryFile();
+  showLoading(false);
+  if (!result) { return; }
+  toast(`Inventory imported: ${result.totalInserted} new, ${result.totalSkipped} existing`);
+  await loadManaboxInventory();
+});
+
+document.getElementById('btn-export-manabox-xlsx')?.addEventListener('click', async () => {
+  if (!manaboxItems.length) { toast('No inventory to export', 'error'); return; }
+  const r = await window.mtg.exportXlsx({ type: 'inventory', rows: manaboxItems });
+  if (r?.ok) toast('Exported: ' + r.path.split(/[\\/]/).pop());
+});
+
+/* ─── Scryfall card image tooltip ─────────────────────────────────────────── */
+(function setupScryfallTooltip() {
+  const tooltip        = document.getElementById('scryfall-tooltip');
+  const tooltipImg     = document.getElementById('scryfall-tooltip-img');
+  const tooltipSpinner = document.getElementById('scryfall-tooltip-spinner');
+  if (!tooltip) return;
+
+  const cache = new Map();
+  let hoverTimer = null;
+
+  function buildCdnUrl(scryfallId) {
+    return `https://cards.scryfall.io/normal/front/${scryfallId[0]}/${scryfallId[1]}/${scryfallId}.jpg`;
+  }
+
+  async function getImageUrl(cardName, scryfallId) {
+    const key = scryfallId || cardName;
+    if (cache.has(key)) return cache.get(key);
+
+    let url = null;
+    if (scryfallId && scryfallId.length > 8) {
+      url = buildCdnUrl(scryfallId);
+    } else {
+      try {
+        const resp = await fetch(
+          `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(cardName)}`
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          url = data.image_uris?.normal ||
+                data.card_faces?.[0]?.image_uris?.normal ||
+                null;
+        }
+      } catch { url = null; }
+    }
+    cache.set(key, url);
+    return url;
+  }
+
+  function positionTooltip(e) {
+    const margin = 14;
+    const tw = tooltip.offsetWidth  || 252;
+    const th = tooltip.offsetHeight || 346;
+    let x = e.clientX + margin;
+    let y = e.clientY + margin;
+    if (x + tw > window.innerWidth)  x = e.clientX - tw - margin;
+    if (y + th > window.innerHeight) y = e.clientY - th - margin;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top  = y + 'px';
+  }
+
+  function hideTooltip() {
+    tooltip.style.display = 'none';
+    tooltipImg.src         = '';
+    tooltipImg.style.display    = 'none';
+    tooltipSpinner.style.display = '';
+  }
+
+  document.addEventListener('mouseover', async e => {
+    const el = e.target.closest('[data-card-name]');
+    if (!el) return;
+
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(async () => {
+      const cardName   = el.dataset.cardName;
+      const scryfallId = el.dataset.scryfallId || '';
+      if (!cardName) return;
+
+      tooltipImg.style.display     = 'none';
+      tooltipSpinner.style.display = '';
+      tooltip.style.display        = 'block';
+      positionTooltip(e);
+
+      const url = await getImageUrl(cardName, scryfallId);
+      if (!url) { hideTooltip(); return; }
+
+      tooltipImg.src    = url;
+      tooltipImg.onload = () => {
+        tooltipSpinner.style.display = 'none';
+        tooltipImg.style.display     = 'block';
+      };
+      tooltipImg.onerror = () => hideTooltip();
+    }, 300);
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (tooltip.style.display !== 'none') positionTooltip(e);
+  });
+
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest('[data-card-name]') && !e.relatedTarget?.closest('[data-card-name]')) {
+      clearTimeout(hoverTimer);
+      setTimeout(hideTooltip, 80);
+    }
+  });
 })();

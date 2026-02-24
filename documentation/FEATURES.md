@@ -294,3 +294,108 @@ Pure functions with no Electron or SQLite dependency — fully testable with Jes
 ### Test Coverage (v1.3.0)
 - **82 tests** across 4 test files
 - `tests/analytics.test.js`: 33 tests covering all 6 analytics functions, including edge cases (empty inputs, negative profit, null margins, sort order, key matching)
+
+---
+
+## v1.4.0 — Separate Folders, ManaBox Inventory & Scryfall Hover (2026-02)
+
+### 1. Separate Folder Paths for Sold and Purchased CSVs
+The Settings page now has **two independent folder pickers**:
+- **Sold CSV Folder** (`csv_folder_sold`) — watched for Cardmarket Sold Orders CSV exports
+- **Purchased CSV Folder** (`csv_folder_purchased`) — watched for Cardmarket Purchased Orders CSV exports
+
+Each folder runs its own chokidar watcher (`startSoldWatcher` / `startPurchasedWatcher`) and fires the appropriate `auto-import` or `auto-import-purchase` IPC event when new files arrive.
+
+**Backward compatibility**: on startup, the app checks `csv_folder_sold` first; if absent, it falls back to the legacy `csv_folder` key for the sold watcher.
+
+New IPC handlers: `set-folder-sold`, `set-folder-purchased`  
+New preload channels: `setFolderSold`, `setFolderPurchased`, `onAutoImportPurchase`
+
+---
+
+### 2. ManaBox Inventory Import
+A dedicated inventory CSV import path for [ManaBox](https://manabox.app/) exports.
+
+**CSV columns supported**:
+```
+Name, Set code, Set name, Collector number, Foil, Rarity, Quantity,
+ManaBox ID, Scryfall ID, Purchase price, Misprint, Altered,
+Condition, Language, Purchase price currency
+```
+Imported rows are stored in the new **`manabox_inventory`** SQLite table.
+
+**Entry points**:
+- Topbar **"+ Inventory"** button
+- Inventory page **"+ Import ManaBox CSV"** button
+- Drag-and-drop (existing mechanism, CSV files are routed through the appropriate importer)
+
+**Inventory page** has a new *ManaBox Inventory* panel showing all imported cards with:
+- Card (hoverable), Set, Set Code, Foil badge, Rarity badge, Qty, Buy Price, Condition, Language
+- Client-side search box
+- XLSX export button
+
+**Implemented in**: `lib/inventoryImporter.js`  
+New IPC handlers: `import-inventory-file`, `get-inventory-list`  
+New preload channels: `importInventoryFile`, `getInventoryList`
+
+---
+
+### 3. Scryfall Card Image on Hover
+Any card name cell in any table (Top Cards, Top Bought Cards, P&L, Inventory, ManaBox Inventory, Foil Premium, Time-to-Sell) now shows a **card image tooltip** when hovered.
+
+**Implementation**:
+- Card name cells are marked with `data-card-name="..."` (and optionally `data-scryfall-id="..."` for ManaBox rows)
+- A fixed `#scryfall-tooltip` div is shown on hover after a 300 ms debounce
+- **With Scryfall ID** (ManaBox imports): builds the CDN URL directly —  
+  `https://cards.scryfall.io/normal/front/{id[0]}/{id[1]}/{id}.jpg` — no API roundtrip
+- **Without Scryfall ID** (CM sales/purchase data): calls  
+  `https://api.scryfall.com/cards/named?fuzzy={name}` and uses `image_uris.normal`
+- Results are cached in a `Map` per session to avoid duplicate requests
+- Tooltip is positioned to stay within the viewport; shows a spinner while loading
+
+---
+
+## Architecture Notes (v1.4.0)
+
+### `lib/inventoryImporter.js`
+Pure function (no Electron/SQLite dependency) — fully testable with Jest.
+
+| Function | Input | Output |
+|---|---|---|
+| `importInventoryFile(db, filePath)` | db instance + file path | `{ inserted, skipped }` |
+| `parseCSVLine(line)` | raw CSV line string | `string[]` — handles RFC-4180 quoting |
+
+### New DB Table: `manabox_inventory`
+```sql
+CREATE TABLE IF NOT EXISTS manabox_inventory (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_name         TEXT NOT NULL,
+  set_code          TEXT, set_name TEXT, collector_num TEXT,
+  is_foil           INTEGER DEFAULT 0,
+  rarity            TEXT, quantity INTEGER DEFAULT 1,
+  manabox_id        TEXT, scryfall_id TEXT,
+  purchase_price    REAL, condition TEXT, language TEXT,
+  purchase_currency TEXT, source_file TEXT
+);
+```
+
+### IPC Channel Reference (new in v1.4.0)
+
+| Channel | Direction | Purpose |
+|---|---|---|
+| `set-folder-sold` | invoke | Opens folder dialog, saves `csv_folder_sold`, starts sold watcher |
+| `set-folder-purchased` | invoke | Opens folder dialog, saves `csv_folder_purchased`, starts purchased watcher |
+| `import-inventory-file` | invoke | Opens CSV dialog, imports ManaBox inventory rows |
+| `get-inventory-list` | invoke | Returns all rows from `manabox_inventory` |
+| `auto-import-purchase` | event | Fired by purchased folder watcher on new file |
+
+### Test Coverage (v1.4.0)
+- **99 tests** across 5 test files
+- `tests/inventoryImporter.test.js`: 17 tests covering `parseCSVLine` (5) and `importInventoryFile` (12)
+  - Edge cases: foil/normal detection, quoted card names with commas, duplicate IGNORE semantics, missing required columns, empty quantity defaults, source_file basename recording
+
+### Version History Update
+
+| Version | Date       | Summary |
+|---------|------------|---------|
+| 1.4.0   | 2026-02    | Separate sold/purchased folders, ManaBox inventory import, Scryfall card hover |
