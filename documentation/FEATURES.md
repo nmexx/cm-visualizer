@@ -15,6 +15,7 @@
 | 1.7.1   | 2026‑02    | Fix: preload sandbox (inline CH constants), add `importFilePath` IPC channel for drag-drop |
 | 1.7.2   | 2026‑02    | Fix: purchases dashboard "no data" (wrong SQL aliases), inventory empty-state never dismissed, ManaBox table never shown, missing `foilVsNormal`/`prevSummary`/`avg_card_cost` queries |
 | 1.7.3   | 2026‑02    | Fix: Apply/Clear filter buttons unwired, preset modal didn't close, 5 XLSX buttons missing, `exportXlsx` payload mismatch, `profitLoss`→`pnl` rename, add `revenueVsCostByMonth` to analytics |
+| 1.7.4   | 2026‑02    | Fix: Orders repeat-buyers panel never shown (missing data source, wrong IDs), purchases dashboard never rendered (5 element ID mismatches between HTML and renderer) |
 
 ---
 
@@ -787,3 +788,51 @@ grouped by month from `soldItems` / `boughtItems`.
 The inventory search was bound dynamically inside `renderInventory()`, stacking
 a new listener on every data refresh. Replaced with a single static
 `addEventListener` at module load in `analytics.js`.
+
+---
+
+## Bug Fixes in v1.7.4
+
+### 1. Orders — Repeat-Buyers panel never shown
+
+Three overlapping causes:
+
+- `GET_STATS` (`getSalesStats`) did not include `repeatBuyers` — only `GET_ANALYTICS`
+  did. The Orders page calls `GET_STATS`, so `d.repeatBuyers` was always
+  `undefined`. **Fix**: the `GET_STATS` handler now augments the `getSalesStats`
+  result with `computeRepeatBuyers(stats.allOrders)` before returning.
+
+- `renderDashboard` in `sales.js` never touched `repeat-buyers-panel` (default
+  `display:none`). **Fix**: added a repeat-buyers render block at the end of
+  `renderDashboard` — shows/hides the panel, fills the 4-KPI grid
+  (`repeat-buyers-kpis`), draws the `chart-buyer-distribution` doughnut, and
+  calls `renderRepeatBuyersRows(rb.topRepeats)`.
+
+- `renderRepeatBuyersRows` in `tables.js` used wrong field names: `b.buyer`
+  (→ `b.buyer_name || b.username`), `b.total_spent` (→ `b.total_revenue`),
+  `b.avg_order_value` (→ computed `total_revenue / order_count`). All three
+  rendered as `undefined`.
+
+- `renderRepeatBuyers` in `analytics.js` called `renderRepeatBuyersRows(rb)`,
+  passing the full object instead of `rb.topRepeats` (an array), causing a
+  `TypeError` that silently aborted the rest of `renderAnalytics`. **Fix**:
+  changed to `renderRepeatBuyersRows(rb?.topRepeats || [])`.
+
+### 2. Purchases dashboard never shown
+
+All five element IDs used in `purchases.js` did not match the actual IDs in
+`index.html`. Both the empty-state and the dashboard content divs were never
+toggled, so the Purchases page appeared completely blank regardless of import
+state.
+
+| Was (renderer) | Is (HTML) |
+|---|---|
+| `empty-state-purchases` | `purchase-empty-state` |
+| `purchases-content` | `purchase-dashboard` |
+| `kpi-grid-purchases` | `purchase-kpi-grid` |
+| `chart-purchases-monthly` | `chart-spend-monthly` |
+| `chart-purchase-sellers` | `chart-top-sellers` |
+
+**Also added** two previously un-rendered charts:
+- `chart-spend-time` — line chart of daily spend from `spendByDay`
+- `chart-purchase-rarity` — doughnut of spend by rarity from `byRarity`

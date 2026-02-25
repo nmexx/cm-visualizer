@@ -38,7 +38,9 @@ export function renderAnalytics(d) {
 }
 
 export function renderRepeatBuyers(rb) {
-  renderRepeatBuyersRows(rb);
+  // The repeat-buyers panel lives on the Orders page and is managed by
+  // renderDashboard in sales.js. Here we only refresh the table rows.
+  renderRepeatBuyersRows(rb?.topRepeats || []);
 }
 
 export function renderSetROI(roi) {

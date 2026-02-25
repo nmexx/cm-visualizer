@@ -5,7 +5,7 @@ import { state } from './state.js';
 import { fmt, fmtNum, buildFilters, renderMissingMonths, trendHtml, toast, showLoading } from './utils.js';
 import { lineChart, barChart, hbarChart, doughnutChart } from './charts.js';
 import {
-  renderTopCardsRows, renderSetsRows, renderOrdersRows,
+  renderTopCardsRows, renderSetsRows, renderOrdersRows, renderRepeatBuyersRows,
   stTopCards, stSets, stOrders,
 } from './tables.js';
 
@@ -96,6 +96,29 @@ export function renderDashboard(d) {
 
   state.orderPage = 1;
   renderOrdersPage(d.allOrders || []);
+
+  // Repeat Buyers panel (in the Orders page)
+  const rb         = d.repeatBuyers;
+  const repeatPanel = document.getElementById('repeat-buyers-panel');
+  if (repeatPanel) {
+    if (rb?.total > 0) {
+      repeatPanel.style.display = 'block';
+      document.getElementById('repeat-buyers-kpis').innerHTML = [
+        { label: 'Total Buyers',        value: fmtNum(rb.total) },
+        { label: 'Repeat Buyers',       value: fmtNum(rb.repeatCount) },
+        { label: 'Repeat Rate',         value: rb.repeatPct.toFixed(1) + '%' },
+        { label: 'Revenue from Repeats', value: rb.repeatRevenuePct.toFixed(1) + '%' },
+      ].map(k => `<div class="kpi"><div class="kpi-label">${k.label}</div><div class="kpi-value">${k.value}</div></div>`).join('');
+      const dist = rb.distribution || {};
+      doughnutChart('chart-buyer-distribution',
+        ['1 order', '2 orders', '3 orders', '4+ orders'],
+        [dist.once || 0, dist.twice || 0, dist.thrice || 0, dist.more || 0],
+        ['#6b7a94', '#3d8ef0', '#c9a227', '#2ecc71']);
+      renderRepeatBuyersRows(rb.topRepeats || []);
+    } else {
+      repeatPanel.style.display = 'none';
+    }
+  }
 }
 
 /* ─── Orders pagination ──────────────────────────────────────────────────── */

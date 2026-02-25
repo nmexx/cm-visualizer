@@ -3,7 +3,7 @@
  */
 import { state } from './state.js';
 import { fmt, fmtNum, buildFilters, renderMissingMonths, trendHtml, toast, showLoading } from './utils.js';
-import { barChart, doughnutChart, hbarChart } from './charts.js';
+import { lineChart, barChart, doughnutChart, hbarChart } from './charts.js';
 import { renderBoughtCardsRows, renderPurchasesRows, stBoughtCards, stPurchases } from './tables.js';
 
 /* ─── Load & render ──────────────────────────────────────────────────────── */
@@ -19,8 +19,8 @@ export function renderPurchases(d) {
   const s       = d.summary || {};
   const hasData = (s.total_purchases || 0) > 0;
 
-  document.getElementById('empty-state-purchases').style.display   = hasData ? 'none'  : 'flex';
-  document.getElementById('purchases-content').style.display       = hasData ? 'block' : 'none';
+  document.getElementById('purchase-empty-state').style.display    = hasData ? 'none'  : 'flex';
+  document.getElementById('purchase-dashboard').style.display      = hasData ? 'block' : 'none';
   if (!hasData) { return; }
 
   renderMissingMonths(d.missingMonths, 'missing-months-purchases');
@@ -34,12 +34,15 @@ export function renderPurchases(d) {
     { label: 'Avg Purchase',     value: fmt(s.avg_purchase_value),cls: '',      trend: '' },
     { label: 'Avg Card Cost',    value: cardCost,                  cls: '',      trend: '' },
   ];
-  document.getElementById('kpi-grid-purchases').innerHTML = kpis.map(k =>
+  document.getElementById('purchase-kpi-grid').innerHTML = kpis.map(k =>
     `<div class="kpi"><div class="kpi-label">${k.label}</div><div class="kpi-value ${k.cls}">${k.value}</div>${k.trend || ''}</div>`
   ).join('');
 
+  if (d.spendByDay?.length) {
+    lineChart('chart-spend-time', d.spendByDay.map(r => r.day), d.spendByDay.map(r => r.amount_spent));
+  }
   if (d.spendByMonth?.length) {
-    barChart('chart-purchases-monthly', d.spendByMonth.map(r => r.month), [{
+    barChart('chart-spend-monthly', d.spendByMonth.map(r => r.month), [{
       label: 'Amount Spent',
       data: d.spendByMonth.map(r => r.amount_spent),
       backgroundColor: '#c9a22799', borderColor: '#c9a227', borderWidth: 1,
@@ -52,7 +55,13 @@ export function renderPurchases(d) {
     hbarChart('chart-purchase-countries', d.byCountry.slice(0, 8).map(r => r.country), d.byCountry.slice(0, 8).map(r => r.amount_spent), '#3d8ef0');
   }
   if (d.bySeller?.length) {
-    hbarChart('chart-purchase-sellers', d.bySeller.slice(0, 8).map(r => r.seller_name?.substring(0, 24) || 'Unknown'), d.bySeller.slice(0, 8).map(r => r.amount_spent), '#9b59b6');
+    hbarChart('chart-top-sellers', d.bySeller.slice(0, 8).map(r => r.seller_name?.substring(0, 24) || 'Unknown'), d.bySeller.slice(0, 8).map(r => r.amount_spent), '#9b59b6');
+  }
+  if (d.byRarity?.length) {
+    doughnutChart('chart-purchase-rarity',
+      d.byRarity.map(r => r.rarity),
+      d.byRarity.map(r => r.amount_spent),
+      ['#e8752a', '#c9a227', '#aab8c8', '#9aa0a8', '#3d8ef0']);
   }
   renderBoughtCardsRows(d.topBoughtCards || []);
   renderPurchasesRows(d.allPurchases || []);

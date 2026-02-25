@@ -32,7 +32,9 @@ function register(ctx) {
 
   // ─── Sales dashboard ───────────────────────────────────────────────────────
   ipcMain.handle(CH.GET_STATS, async (_, filters) => {
-    return getSalesStats(db, filters || {});
+    const stats = getSalesStats(db, filters || {});
+    stats.repeatBuyers = computeRepeatBuyers(stats.allOrders || []);
+    return stats;
   });
 
   // ─── Purchases dashboard ───────────────────────────────────────────────────

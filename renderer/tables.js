@@ -150,10 +150,10 @@ export function renderRepeatBuyersRows(arr) {
   if (!tbody) { return; }
   tbody.innerHTML = arr.map(b => `
     <tr>
-      <td>${esc(b.buyer)}</td>
+      <td>${esc(b.buyer_name || b.username || '')}</td>
       <td>${b.order_count || 0}</td>
-      <td>${fmt(b.total_spent)}</td>
-      <td>${fmt(b.avg_order_value)}</td>
+      <td>${fmt(b.total_revenue)}</td>
+      <td>${fmt(b.order_count > 0 ? b.total_revenue / b.order_count : 0)}</td>
     </tr>`).join('');
 }
 
