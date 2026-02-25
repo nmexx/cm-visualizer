@@ -1,6 +1,6 @@
 'use strict';
 
-const { parseFloat_eu, parseDescriptionItem, parseCSVLine, sanitizeDate } = require('../lib/parser');
+const { parseFloat_eu, parseDescriptionItem, parseCSVLine, parseDelimitedLine, sanitizeDate } = require('../lib/parser');
 
 // ─── parseFloat_eu ────────────────────────────────────────────────────────────
 describe('parseFloat_eu', () => {
@@ -35,6 +35,15 @@ describe('parseFloat_eu', () => {
   test('parses large amounts', () => {
     expect(parseFloat_eu('1234,56')).toBe(1234.56);
   });
+
+  test('parses EU amounts with dot-thousands separator ("1.234,56" \u2192 1234.56)', () => {
+    expect(parseFloat_eu('1.234,56')).toBe(1234.56);
+  });
+
+
+  test('parses dot-decimal float unchanged ("3.98" \u2192 3.98)', () => {
+    expect(parseFloat_eu('3.98')).toBe(3.98);
+  });
 });
 
 // ─── parseCSVLine ─────────────────────────────────────────────────────────────
@@ -55,6 +64,37 @@ describe('parseCSVLine', () => {
     const line = 'OrderID;Username;Name;Street;City;Country';
     expect(parseCSVLine(line)[0]).toBe('OrderID');
     expect(parseCSVLine(line)[5]).toBe('Country');
+  });
+});
+
+// ─── parseDelimitedLine ─────────────────────────────────────────────────────
+describe('parseDelimitedLine', () => {
+  test('splits a simple comma-separated line', () => {
+    expect(parseDelimitedLine('a,b,c')).toEqual(['a', 'b', 'c']);
+  });
+
+  test('uses a custom separator', () => {
+    expect(parseDelimitedLine('a;b;c', ';')).toEqual(['a', 'b', 'c']);
+  });
+
+  test('handles quoted field containing the delimiter', () => {
+    expect(parseDelimitedLine('"Eirdu, Fae",ECL,Test')).toEqual(['Eirdu, Fae', 'ECL', 'Test']);
+  });
+
+  test('handles escaped double-quote inside quoted field', () => {
+    expect(parseDelimitedLine('"He said ""hello""",next')).toEqual(['He said "hello"', 'next']);
+  });
+
+  test('returns single-element array for empty string', () => {
+    expect(parseDelimitedLine('')).toEqual(['']);
+  });
+
+  test('handles trailing delimiter (empty last field)', () => {
+    expect(parseDelimitedLine('a,b,')).toEqual(['a', 'b', '']);
+  });
+
+  test('handles empty fields between delimiters', () => {
+    expect(parseDelimitedLine('a,,c')).toEqual(['a', '', 'c']);
   });
 });
 

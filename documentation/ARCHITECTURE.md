@@ -1,6 +1,6 @@
 # cm-visualizer — Architecture
 
-> Last updated: v1.8.1
+> Last updated: v1.8.2
 
 ## Overview
 

@@ -19,6 +19,7 @@
 | 1.7.5   | 2026‑02    | Fix: P&L page always showed empty-state (pnl-empty-state/pnl-dashboard never toggled), pnl-kpi-grid blank, manabox-count/inventory-count elements missing from HTML, no Cancel button in preset modal |
 | 1.8.0   | 2026‑02    | IPC reliability overhaul: fix revenueVsCostByMonth always empty (SQL missing date columns), fix IMPORT_INVENTORY_FILE ignoring path arg, fix INSTALL_UPDATE re-downloading instead of installing, RFC-4180 CSV escaping, prepared-statement caching, deduplicated import loops, SettingsStore.getPresets() |
 | 1.8.1   | 2026‑02    | Lib bug-fix pass: CRLF CSV parsing in importer.js, skipped→replaced semantics, per-row error isolation, computeSetROI includes sold-only sets, single-pass distribution in computeRepeatBuyers, MAX_FOIL_ROWS constant, parseDelimitedLine extracted to parser.js, zero-quantity preserved in inventory importer |
+| 1.8.2   | 2026‑02    | parseFloat_eu corrupted prices ≥€1,000 (dot-thousands separator stripped); migrations DDL deduplicated, migration errors now include id+description, applied migrations logged to console.info; ipcChannels 'use strict' placement fixed, PUSH_CHANNELS export added; preload eliminates duplicate channel list by requiring ipcChannels |
 
 ---
 

@@ -64,4 +64,39 @@ describe('runMigrations', () => {
     const names = cols.map(c => c.name);
     expect(names).toContain('product_id');
   });
+
+  test('logs each migration description to console.info when applied', () => {
+    const db = freshDb();
+    const spy = jest.spyOn(console, 'info').mockImplementation(() => {});
+    runMigrations(db);
+    const messages = spy.mock.calls.map(c => String(c[0]));
+    spy.mockRestore();
+    // Every migration should produce one log line containing its description
+    expect(messages.some(m => m.includes('Create schema_version'))).toBe(true);
+    expect(messages.some(m => m.includes('source_file'))).toBe(true);
+    expect(messages.some(m => m.includes('product_id'))).toBe(true);
+  });
+
+  test('does not log on re-run when all migrations are already applied', () => {
+    const db = freshDb();
+    runMigrations(db); // first run — applies all
+    const spy = jest.spyOn(console, 'info').mockImplementation(() => {});
+    runMigrations(db); // second run — nothing to apply
+    const callCount = spy.mock.calls.length;
+    spy.mockRestore();
+    expect(callCount).toBe(0);
+  });
+
+  test('wraps a failing migration error with migration id and description', () => {
+    const { MIGRATIONS } = require('../lib/migrations');
+    const db = freshDb();
+    // Temporarily replace migration 2's up() with one that throws
+    const original = MIGRATIONS[1].up;
+    MIGRATIONS[1].up = () => { throw new Error('intentional test failure'); };
+    try {
+      expect(() => runMigrations(db)).toThrow(/Migration 2.*Add source_file.*failed/i);
+    } finally {
+      MIGRATIONS[1].up = original; // always restore
+    }
+  });
 });
