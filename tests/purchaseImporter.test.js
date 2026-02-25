@@ -99,9 +99,9 @@ describe('importPurchasedCSVFile', () => {
 
   beforeEach(() => { db = new MockPurchaseDB(); });
 
-  test('returns { inserted:0, skipped:0 } for a header-only file', () => {
+  test('returns { inserted:0, replaced:0 } for a header-only file', () => {
     const p = writeTempCSV(CSV_HEADER + '\n');
-    expect(importPurchasedCSVFile(db, p)).toEqual({ inserted: 0, skipped: 0 });
+    expect(importPurchasedCSVFile(db, p)).toEqual({ inserted: 0, replaced: 0 });
     fs.unlinkSync(p);
   });
 
@@ -113,7 +113,7 @@ describe('importPurchasedCSVFile', () => {
     fs.unlinkSync(p);
 
     expect(result.inserted).toBe(1);
-    expect(result.skipped).toBe(0);
+    expect(result.replaced).toBe(0);
 
     const order = db.getPurchase('2001');
     expect(order).toBeDefined();
@@ -184,7 +184,7 @@ describe('importPurchasedCSVFile', () => {
     expect(items[0].card_name).toBe('Glasswing Grace // Age-Graced Chapel');
   });
 
-  test('counts re-import of existing order as skipped and refreshes its items', () => {
+  test('counts re-import of existing order as replaced and refreshes its items', () => {
     const row = '2005;re-seller;Repeat Inc;Ave 9;Paris;France;;;2024-07-05 08:00:00;1;3,00;1,20;0,10;4,30;EUR;1x Counterspell (Alpha Edition) - 54 - Common - NM - English - 3,00 EUR;50001;Counterspell';
 
     let p = writeTempCSV(csvLines(row));
@@ -196,9 +196,69 @@ describe('importPurchasedCSVFile', () => {
     const result = importPurchasedCSVFile(db, p);
     fs.unlinkSync(p);
 
-    expect(result.skipped).toBe(1);
+    expect(result.replaced).toBe(1);
     // items from the second import replace the first
     expect(db.getItemsFor('2005')).toHaveLength(1);
+  });
+
+  test('handles CRLF line endings without corrupting last column', () => {
+    const row = '2007;seller7;Shop;St 1;Oslo;Norway;;;2024-08-01 10:00:00;1;3,00;1,20;0,10;4,30;EUR;1x Brainstorm (Mercadian Masques) - 60 - Common - NM - English - 3,00 EUR;70001;Brainstorm';
+    const content = [CSV_HEADER, row].join('\r\n') + '\r\n';
+    const p = path.join(os.tmpdir(), `cm-crlf-${Date.now()}.csv`);
+    fs.writeFileSync(p, content, 'utf-8');
+    const result = importPurchasedCSVFile(db, p);
+    fs.unlinkSync(p);
+
+    expect(result.inserted).toBe(1);
+    const items = db.getItemsFor('2007');
+    expect(items).toHaveLength(1);
+    // price must not carry a trailing \r
+    expect(items[0].price).toBeCloseTo(3.00);
+    expect(items[0].card_name).toBe('Brainstorm');
+  });
+
+  test('skips a row that throws and continues importing the remaining rows', () => {
+    // Use a real SQLite DB with the actual schema so we can trigger a real error.
+    // We simulate a throw by wrapping the mock transaction fn to rethrow for order 2008.
+    const good = '2009;seller9;Shop;St 1;Lisbon;Portugal;;;2024-08-03 10:00:00;1;2,00;1,20;0,10;3,30;EUR;1x Llanowar Elves (M19) - 180 - Common - NM - English - 2,00 EUR;80001;Llanowar Elves';
+    const good2 = '2010;seller10;Shop;St 2;Oslo;Norway;;;2024-08-04 10:00:00;1;3,00;1,20;0,10;4,30;EUR;1x Island (Unlimited Edition) - 55 - Basic Land - NM - English - 3,00 EUR;80002;Island';
+
+    // Patch MockPurchaseStatement to throw the FIRST time insertPurchase.run is called
+    let insertCalls = 0;
+    const OrigClass = MockPurchaseStatement;
+    class ThrowingStmt extends OrigClass {
+      run(...args) {
+        if (this._sql.toUpperCase().includes('INTO PURCHASES')) {
+          insertCalls++;
+          if (insertCalls === 1) { throw new Error('simulated DB error on first purchase'); }
+        }
+        return super.run(...args);
+      }
+    }
+    // Monkey-patch MockPurchaseDB to use ThrowingStmt
+    const origPrepare = db.prepare;
+    db.prepare = (sql) => new ThrowingStmt(db, sql);
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const p = writeTempCSV(csvLines(good, good2));
+    let result;
+    try {
+      result = importPurchasedCSVFile(db, p);
+      // Assert before mockRestore — mockRestore clears mock.calls
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[purchaseImporter]'),
+        expect.stringContaining('simulated DB error'),
+      );
+    } finally {
+      db.prepare = origPrepare;
+      warnSpy.mockRestore();
+      fs.unlinkSync(p);
+    }
+
+    // First row threw → skipped; second row must be inserted
+    expect(result.inserted).toBe(1);
+    expect(db.getPurchase('2009')).toBeUndefined(); // threw, not inserted
+    expect(db.getPurchase('2010')).toBeDefined();    // should succeed
   });
 
   test('skips blank/empty rows gracefully', () => {

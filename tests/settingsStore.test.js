@@ -105,4 +105,30 @@ describe('SettingsStore', () => {
     expect(presets[0].name).toBe('My Range');
     expect(presets[0]).not.toHaveProperty('key');
   });
+
+  test('getPresets() skips entries with invalid JSON and warns', () => {
+    const store = makeStore();
+    store.set('preset_Valid',   JSON.stringify({ from: '2025-01-01', to: '2025-03-31' }));
+    store.set('preset_Corrupt', 'NOT_JSON{{');
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    let presets;
+    try {
+      presets = store.getPresets();
+    } finally {
+      // Assert before mockRestore — mockRestore clears mock.calls
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('preset_Corrupt'));
+      warnSpy.mockRestore();
+    }
+    expect(presets).toHaveLength(1);
+    expect(presets[0].name).toBe('Valid');
+  });
+
+  test('getPresets() uses cached prepared statement (callable multiple times)', () => {
+    const store = makeStore();
+    store.set('preset_A', JSON.stringify({ from: '2025-01-01', to: '2025-06-30' }));
+    // Should not throw on repeated calls
+    expect(store.getPresets()).toHaveLength(1);
+    expect(store.getPresets()).toHaveLength(1);
+    expect(store.getPresets()).toHaveLength(1);
+  });
 });
