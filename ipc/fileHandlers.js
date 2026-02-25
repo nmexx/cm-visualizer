@@ -232,7 +232,9 @@ function register(ctx) {
   });
 
   // ─── Export CSV ────────────────────────────────────────────────────────────
-  ipcMain.handle(CH.EXPORT_CSV, async (_, type) => {
+  ipcMain.handle(CH.EXPORT_CSV, async (_, payload) => {
+    const type       = typeof payload === 'string' ? payload : payload?.type;
+    const passedRows = typeof payload === 'object' && payload?.rows ? payload.rows : null;
     const win  = getMainWindow();
     const date = new Date().toISOString().split('T')[0];
     const result = await dialog.showSaveDialog(win, {
@@ -242,13 +244,15 @@ function register(ctx) {
     });
     if (result.canceled) { return null; }
 
-    let rows = [];
-    if (type === 'orders') {
-      rows = db.prepare('SELECT order_id,username,buyer_name,country,date_of_purchase,article_count,merchandise_value,shipment_costs,total_value,commission,currency FROM orders ORDER BY date_of_purchase DESC').all();
-    } else if (type === 'top-cards') {
-      rows = db.prepare('SELECT card_name,set_name,rarity,SUM(quantity) AS qty_sold,SUM(price*quantity) AS revenue FROM order_items GROUP BY card_name,set_name ORDER BY revenue DESC').all();
-    } else if (type === 'purchases') {
-      rows = db.prepare('SELECT order_id,seller_username,seller_name,country,date_of_purchase,article_count,merchandise_value,shipment_costs,trustee_fee,total_value,currency FROM purchases ORDER BY date_of_purchase DESC').all();
+    let rows = passedRows || [];
+    if (!passedRows) {
+      if (type === 'orders') {
+        rows = db.prepare('SELECT order_id,username,buyer_name,country,date_of_purchase,article_count,merchandise_value,shipment_costs,total_value,commission,currency FROM orders ORDER BY date_of_purchase DESC').all();
+      } else if (type === 'top-cards') {
+        rows = db.prepare('SELECT card_name,set_name,rarity,SUM(quantity) AS qty_sold,SUM(price*quantity) AS revenue FROM order_items GROUP BY card_name,set_name ORDER BY revenue DESC').all();
+      } else if (type === 'purchases') {
+        rows = db.prepare('SELECT order_id,seller_username,seller_name,country,date_of_purchase,article_count,merchandise_value,shipment_costs,trustee_fee,total_value,currency FROM purchases ORDER BY date_of_purchase DESC').all();
+      }
     }
 
     if (!rows.length) { return { ok: false, message: 'No data to export' }; }

@@ -43,7 +43,7 @@ document.getElementById('btn-import-inventory-inline').addEventListener('click',
 });
 
 document.getElementById('btn-export-manabox-xlsx').addEventListener('click', async () => {
-  const r = await window.mtg.exportXlsx('manabox');
+  const r = await window.mtg.exportXlsx({ type: 'manabox', rows: state.manaboxItems || [] });
   if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
   else if (r) { toast(r.message || 'Export failed', 'error'); }
 });

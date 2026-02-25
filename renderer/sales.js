@@ -189,8 +189,18 @@ document.getElementById('btn-export-orders').addEventListener('click', async () 
   if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
   else if (r) { toast(r.message || 'Export failed', 'error'); }
 });
+document.getElementById('btn-export-orders-xlsx').addEventListener('click', async () => {
+  const r = await window.mtg.exportXlsx({ type: 'orders', rows: state.currentData?.allOrders || [] });
+  if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
+  else if (r) { toast(r.message || 'Export failed', 'error'); }
+});
 document.getElementById('btn-export-cards').addEventListener('click', async () => {
   const r = await window.mtg.exportCsv('top-cards');
+  if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
+  else if (r) { toast(r.message || 'Export failed', 'error'); }
+});
+document.getElementById('btn-export-cards-xlsx').addEventListener('click', async () => {
+  const r = await window.mtg.exportXlsx({ type: 'cards', rows: state.currentData?.topCards || [] });
   if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
   else if (r) { toast(r.message || 'Export failed', 'error'); }
 });

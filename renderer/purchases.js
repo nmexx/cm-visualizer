@@ -77,3 +77,8 @@ document.getElementById('btn-export-purchases').addEventListener('click', async 
   if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
   else if (r) { toast(r.message || 'Export failed', 'error'); }
 });
+document.getElementById('btn-export-purchases-xlsx').addEventListener('click', async () => {
+  const r = await window.mtg.exportXlsx({ type: 'purchases', rows: state.purchaseData?.allPurchases || [] });
+  if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
+  else if (r) { toast(r.message || 'Export failed', 'error'); }
+});

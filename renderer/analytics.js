@@ -82,20 +82,16 @@ export function renderInventory(inv) {
     ).join('');
   }
 
-  // Bind search once (use .replaceWith to avoid stacking listeners)
-  const searchEl = document.getElementById('inventory-search');
-  if (searchEl) {
-    const newSearch = searchEl.cloneNode(true);
-    searchEl.parentNode.replaceChild(newSearch, searchEl);
-    newSearch.addEventListener('input', () => {
-      const q = newSearch.value.toLowerCase().trim();
-      const filtered = (state.sortedInventory || []).filter(item =>
-        !q || item.card_name?.toLowerCase().includes(q) || item.set_name?.toLowerCase().includes(q)
-      );
-      renderInventoryRows(filtered);
-    });
-  }
 }
+
+// Static inventory search — reads from state.sortedInventory set by renderInventory
+document.getElementById('inventory-search')?.addEventListener('input', () => {
+  const q = document.getElementById('inventory-search').value.toLowerCase().trim();
+  const filtered = (state.sortedInventory || []).filter(item =>
+    !q || item.card_name?.toLowerCase().includes(q) || item.set_name?.toLowerCase().includes(q)
+  );
+  renderInventoryRows(filtered);
+});
 
 /* ─── Import / export button handlers ───────────────────────────────────── */
 
@@ -111,12 +107,24 @@ document.getElementById('btn-import-inventory').addEventListener('click', async 
 });
 
 document.getElementById('btn-export-pnl').addEventListener('click', async () => {
-  const r = await window.mtg.exportXlsx('pnl');
+  const r = await window.mtg.exportCsv({ type: 'pnl', rows: state.analyticsData?.pnl || [] });
+  if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
+  else if (r) { toast(r.message || 'Export failed', 'error'); }
+});
+document.getElementById('btn-export-pnl-xlsx').addEventListener('click', async () => {
+  const r = await window.mtg.exportXlsx({ type: 'pnl', rows: state.analyticsData?.pnl || [] });
   if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
   else if (r) { toast(r.message || 'Export failed', 'error'); }
 });
 document.getElementById('btn-export-inventory').addEventListener('click', async () => {
-  const r = await window.mtg.exportXlsx('inventory');
+  const rows = state.sortedInventory || state.analyticsData?.inventory?.items || [];
+  const r = await window.mtg.exportCsv({ type: 'inventory', rows });
+  if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
+  else if (r) { toast(r.message || 'Export failed', 'error'); }
+});
+document.getElementById('btn-export-inventory-xlsx').addEventListener('click', async () => {
+  const rows = state.sortedInventory || state.analyticsData?.inventory?.items || [];
+  const r = await window.mtg.exportXlsx({ type: 'inventory', rows });
   if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
   else if (r) { toast(r.message || 'Export failed', 'error'); }
 });

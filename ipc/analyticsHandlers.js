@@ -87,13 +87,30 @@ function register(ctx) {
     );
     const inventoryTotalValue = inventoryItems.reduce((s, r) => s + (r.estimated_value || 0), 0);
 
+    // Revenue vs cost by month for the bar chart
+    const rvcMap = new Map();
+    for (const item of soldItems) {
+      const month = (item.date_of_sale || '').slice(0, 7);
+      if (!month) { continue; }
+      if (!rvcMap.has(month)) { rvcMap.set(month, { month, revenue: 0, cost: 0 }); }
+      rvcMap.get(month).revenue += (item.price || 0) * (item.quantity || 1);
+    }
+    for (const item of boughtItems) {
+      const month = (item.date_of_purchase || '').slice(0, 7);
+      if (!month) { continue; }
+      if (!rvcMap.has(month)) { rvcMap.set(month, { month, revenue: 0, cost: 0 }); }
+      rvcMap.get(month).cost += (item.price || 0) * (item.quantity || 1);
+    }
+    const revenueVsCostByMonth = [...rvcMap.values()].sort((a, b) => a.month.localeCompare(b.month));
+
     return {
-      profitLoss:   computeProfitLoss(soldItems, boughtItems),
-      inventory:    { items: inventoryItems, totalValue: inventoryTotalValue },
-      repeatBuyers: computeRepeatBuyers(allOrders),
-      setROI:       computeSetROI(allSoldItems, allBoughtItems),
-      foilPremium:  computeFoilPremium(soldItems),
-      timeToSell:   computeTimeToSell(allBoughtItems, allSoldItems),
+      pnl:                 computeProfitLoss(soldItems, boughtItems),
+      inventory:           { items: inventoryItems, totalValue: inventoryTotalValue },
+      repeatBuyers:        computeRepeatBuyers(allOrders),
+      setROI:              computeSetROI(allSoldItems, allBoughtItems),
+      foilPremium:         computeFoilPremium(soldItems),
+      timeToSell:          computeTimeToSell(allBoughtItems, allSoldItems),
+      revenueVsCostByMonth,
     };
   });
 
