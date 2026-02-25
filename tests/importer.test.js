@@ -25,9 +25,9 @@ describe('importCSVFile', () => {
 
   beforeEach(() => { db = new MockDB(); });
 
-  test('returns { inserted:0, skipped:0 } for a header-only file', () => {
+  test('returns { inserted:0, replaced:0 } for a header-only file', () => {
     const p = writeTempCSV(CSV_HEADER + '\n');
-    expect(importCSVFile(db, p)).toEqual({ inserted: 0, skipped: 0 });
+    expect(importCSVFile(db, p)).toEqual({ inserted: 0, replaced: 0 });
     fs.unlinkSync(p);
   });
 
@@ -39,7 +39,7 @@ describe('importCSVFile', () => {
     fs.unlinkSync(p);
 
     expect(result.inserted).toBe(1);
-    expect(result.skipped).toBe(0);
+    expect(result.replaced).toBe(0);
 
     const order = db.getOrder('1001');
     expect(order).toBeDefined();
@@ -114,7 +114,7 @@ describe('importCSVFile', () => {
     expect(db.getOrder('1005').is_professional).toBe(0);
   });
 
-  test('counts re-import of existing order as skipped and overwrites items', () => {
+  test('counts re-import of existing order as replaced and overwrites items', () => {
     const row = '1006;buyer6;Tom;Lane 6;Dortmund;Germany;;;2024-06-06 08:00:00;1;4,00;1,25;5,25;0,22;EUR;1x Brainstorm (Commander Legends) - 10 - Common - NM - English - 4,00 EUR;200001;Brainstorm';
 
     let p = writeTempCSV(csvLines(row));
@@ -127,7 +127,7 @@ describe('importCSVFile', () => {
     fs.unlinkSync(p);
 
     expect(second.inserted).toBe(0);
-    expect(second.skipped).toBe(1);
+    expect(second.replaced).toBe(1);
     expect(db.allOrders()).toHaveLength(1);
     expect(db.getItemsFor('1006')).toHaveLength(1);
   });
@@ -142,7 +142,7 @@ describe('importCSVFile', () => {
     fs.unlinkSync(p);
 
     expect(result.inserted).toBe(3);
-    expect(result.skipped).toBe(0);
+    expect(result.replaced).toBe(0);
     expect(db.allOrders()).toHaveLength(3);
   });
 
@@ -186,5 +186,18 @@ describe('importCSVFile', () => {
     const items = db.getItemsFor('4001');
     expect(items[0].quantity).toBe(2);
     expect(items[0].card_name).toBe('All That Glitters');
+  });
+
+  test('correctly parses CRLF line endings (Windows CSV)', () => {
+    const row = '5001;buyercrlf;Test User;St 1;Berlin;Germany;;;2024-10-01 10:00:00;1;1,00;1,25;2,25;0,06;EUR;1x Plains (Core Set 2021) - 250 - Land - NM - English - 1,00 EUR;300001;Plains';
+    const p = writeTempCSV(CSV_HEADER + '\r\n' + row + '\r\n');
+    const result = importCSVFile(db, p);
+    fs.unlinkSync(p);
+
+    expect(result.inserted).toBe(1);
+    const order = db.getOrder('5001');
+    expect(order).toBeDefined();
+    // country must not have a trailing \r
+    expect(order.country).toBe('Germany');
   });
 });

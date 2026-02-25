@@ -207,4 +207,12 @@ describe('importInventoryFile', () => {
     fs.unlinkSync(p);
     expect(db.getAll()[0].quantity).toBe(1);
   });
+
+  test('explicit zero quantity is preserved as 0 (not coerced to 1)', () => {
+    const line = `Zero Card,ECL,S,1,foil,common,0,998,aaaaaaaa-0000-0000-0000-000000000099,0.10,false,false,near_mint,de,EUR`;
+    const p = writeTempCSV([CSV_HEADER, line].join('\n'));
+    importInventoryFile(db, p);
+    fs.unlinkSync(p);
+    expect(db.getAll()[0].quantity).toBe(0);
+  });
 });

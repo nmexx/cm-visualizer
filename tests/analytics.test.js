@@ -223,10 +223,26 @@ describe('computeSetROI', () => {
     expect(r.roi_pct).toBeCloseTo(100.00);
   });
 
-  test('sold-only sets do not appear (only bought sets are included)', () => {
-    // Only sets that were purchased appear in the result
+  test('sold-only sets appear with null roi_pct (no cost basis)', () => {
     const result = computeSetROI([{ set_name: 'SoldOnly', quantity: 1, price: 5 }], []);
-    expect(result).toHaveLength(0);
+    expect(result).toHaveLength(1);
+    expect(result[0].set_name).toBe('SoldOnly');
+    expect(result[0].roi_pct).toBeNull();
+    expect(result[0].qty_bought).toBe(0);
+    expect(result[0].total_revenue).toBeCloseTo(5);
+  });
+
+  test('sold-only set sorts after sets with a cost basis (nulls last)', () => {
+    const bought = [{ set_name: 'Bought', quantity: 1, price: 5.00 }];
+    const sold   = [
+      { set_name: 'Bought',   quantity: 1, price: 10.00 }, // +100% roi
+      { set_name: 'SoldOnly', quantity: 1, price: 3.00  }, // null roi
+    ];
+    const result = computeSetROI(sold, bought);
+    expect(result).toHaveLength(2);
+    expect(result[0].set_name).toBe('Bought');
+    expect(result[1].set_name).toBe('SoldOnly');
+    expect(result[1].roi_pct).toBeNull();
   });
 
   test('bought-but-not-sold set has roi_pct of -100 (full loss)', () => {

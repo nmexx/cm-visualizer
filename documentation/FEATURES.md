@@ -18,6 +18,7 @@
 | 1.7.4   | 2026‑02    | Fix: Orders repeat-buyers panel never shown (missing data source, wrong IDs), purchases dashboard never rendered (5 element ID mismatches between HTML and renderer) |
 | 1.7.5   | 2026‑02    | Fix: P&L page always showed empty-state (pnl-empty-state/pnl-dashboard never toggled), pnl-kpi-grid blank, manabox-count/inventory-count elements missing from HTML, no Cancel button in preset modal |
 | 1.8.0   | 2026‑02    | IPC reliability overhaul: fix revenueVsCostByMonth always empty (SQL missing date columns), fix IMPORT_INVENTORY_FILE ignoring path arg, fix INSTALL_UPDATE re-downloading instead of installing, RFC-4180 CSV escaping, prepared-statement caching, deduplicated import loops, SettingsStore.getPresets() |
+| 1.8.1   | 2026‑02    | Lib bug-fix pass: CRLF CSV parsing in importer.js, skipped→replaced semantics, per-row error isolation, computeSetROI includes sold-only sets, single-pass distribution in computeRepeatBuyers, MAX_FOIL_ROWS constant, parseDelimitedLine extracted to parser.js, zero-quantity preserved in inventory importer |
 
 ---
 
