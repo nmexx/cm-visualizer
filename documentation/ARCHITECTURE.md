@@ -1,6 +1,6 @@
 # cm-visualizer — Architecture
 
-> Last updated: v1.7.2
+> Last updated: v1.7.3
 
 ## Overview
 
@@ -105,20 +105,27 @@ Each handler module exports a single `register(ctx)` function. This pattern:
 
 ### `GET_ANALYTICS` return shape
 
-The `GET_ANALYTICS` handler returns an object. The `inventory` key is **not** a
-raw array — it is wrapped as:
+The `GET_ANALYTICS` handler returns:
 
 ```js
-{ items: InventoryRow[], totalValue: number }
+{
+  pnl:                  PnlRow[],           // matched purchase vs sale per card
+  inventory:            { items: InventoryRow[], totalValue: number },
+  repeatBuyers:         { ... },
+  setROI:               SetROIRow[],
+  foilPremium:          FoilPremiumRow[],
+  timeToSell:           TimeToSellRow[],
+  revenueVsCostByMonth: { month: string, revenue: number, cost: number }[],
+}
 ```
 
-This lets the renderer distinguish between "no data" (`items.length === 0`) and a
-cache miss, and avoids recomputing `totalValue` inside the renderer.
+`inventory` is wrapped as `{ items, totalValue }` so the renderer gets both the
+rows and the pre-computed aggregate in one IPC round-trip.
 
-> **Rule**: whenever a handler returns a collection that the renderer uses to
-> toggle an empty-state, wrap it as `{ items, ...aggregates }` rather than a
-> bare array, so the renderer gets both the rows and the pre-computed totals in
-> one IPC round-trip.
+> **Key naming rule**: return key names must exactly match the property names
+> read by `renderAnalytics`. Mismatches (e.g. `profitLoss` vs `pnl`) silently
+> produce empty tables — always cross-check the renderer when adding or renaming
+> a key.
 
 ### Renderer empty-state / visibility pattern
 
@@ -133,6 +140,37 @@ The render functions (e.g. `renderPurchases`, `renderInventory`) are responsible
 for toggling both. Table-level helpers (e.g. `renderManaboxRows`) additionally
 toggle their own `#<id>-empty` / `#<id>-table-wrap` pair so the table's
 built-in empty state is always in sync.
+
+### `EXPORT_CSV` — dual payload
+
+`EXPORT_CSV` accepts either a bare type string **or** a `{ type, rows }` object:
+
+```js
+// DB-backed types — handler runs the SQL itself
+await window.mtg.exportCsv('orders');
+await window.mtg.exportCsv('purchases');
+await window.mtg.exportCsv('top-cards');
+
+// Computed types — renderer passes the in-memory rows
+await window.mtg.exportCsv({ type: 'pnl',      rows: state.analyticsData?.pnl });
+await window.mtg.exportCsv({ type: 'inventory', rows: state.sortedInventory });
+```
+
+`EXPORT_XLSX` always requires `{ type, rows }` because all XLSX exports operate
+on in-memory data passed from the renderer.
+
+### Renderer event listener rules
+
+All `addEventListener` calls **must be static module-level binds** — written
+once when the module loads, never inside render functions called repeatedly.
+
+- **Bad**: wiring a listener inside `renderInventory()` — every re-render
+  stacks another listener on the same element.
+- **Good**: one static `document.getElementById('inventory-search')?.addEventListener('input', ...)` at the bottom of `analytics.js`.
+
+The `?.` optional chain is required for elements that may not exist in every
+HTML build. Every interactive element in `index.html` should have exactly one
+corresponding static listener in the renderer modules.
 
 ---
 
@@ -190,6 +228,13 @@ contain no Electron imports and can be tested with an in-memory database.
 
 - `salesRepo.getSalesStats(db, filters)` — all metrics for the Sales dashboard
 - `purchasesRepo.getPurchaseStats(db, filters)` — all metrics for the Purchases dashboard
+
+> **Field name contract**: SQL column aliases in each repo must exactly match the
+> property names read by the corresponding renderer module. `purchasesRepo` uses
+> `total_purchases`, `total_cards`, `avg_purchase_value`, `amount_spent` (not
+> the legacy names `total_orders`, `total_articles`, `avg_order_value`, `spent`).
+> Mismatched aliases silently return `undefined` and hide entire dashboard
+> sections.
 
 ---
 

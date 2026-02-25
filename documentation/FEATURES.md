@@ -12,6 +12,9 @@
 | 1.5.0   | 2026‑07    | Sortable table columns across all 12 data tables |
 | 1.6.0   | 2026‑02    | Cardmarket price guide download, inventory file path in settings, market price columns in inventory |
 | 1.7.0   | 2026‑02    | Modular architecture refactor: ES module renderer split, IPC constants, migration runner, settingsStore, repository layer, electron.net, timeout + atomic download |
+| 1.7.1   | 2026‑02    | Fix: preload sandbox (inline CH constants), add `importFilePath` IPC channel for drag-drop |
+| 1.7.2   | 2026‑02    | Fix: purchases dashboard "no data" (wrong SQL aliases), inventory empty-state never dismissed, ManaBox table never shown, missing `foilVsNormal`/`prevSummary`/`avg_card_cost` queries |
+| 1.7.3   | 2026‑02    | Fix: Apply/Clear filter buttons unwired, preset modal didn't close, 5 XLSX buttons missing, `exportXlsx` payload mismatch, `profitLoss`→`pnl` rename, add `revenueVsCostByMonth` to analytics |
 
 ---
 
@@ -666,3 +669,121 @@ structure, dependency graph, IPC pattern, migration runner, and settings store.
 - New: `tests/settingsStore.test.js` — 8 tests
 - New: `tests/migrations.test.js` — 5 tests
 - All existing tests continue to pass
+
+---
+
+## Bug Fixes in v1.7.1
+
+### 1. Preload sandbox — buttons did nothing after build
+
+Electron 20+ enables `sandbox: true` for renderer processes by default.
+Inside a sandboxed preload, `require()` for any relative local file fails
+silently. `require('./lib/ipcChannels')` returned `undefined`, so
+`contextBridge.exposeInMainWorld` exposed an object full of `undefined`
+functions — every button call to `window.mtg.*` threw `TypeError`.
+
+**Fix**: removed the `require` call; all 29 channel name strings are now
+inlined as a `const CH = { ... }` literal directly in `preload.js`, with a
+comment requiring manual sync with `lib/ipcChannels.js`.
+
+### 2. `importFilePath` IPC channel (drag-drop)
+
+Drag-and-drop CSV import needed to pass a known file path to the main process
+without opening a system dialog. Added `IMPORT_FILE_PATH` channel end-to-end:
+`lib/ipcChannels.js`, `preload.js` (inline CH), and `ipc/fileHandlers.js`.
+
+---
+
+## Bug Fixes in v1.7.2
+
+### 1. Purchases dashboard showed "no purchase data"
+
+`purchasesRepo.getPurchaseStats` returned SQL column aliases that didn't match
+the renderer's expected field names:
+
+| Was (SQL alias) | Expected by renderer |
+|---|---|
+| `total_orders` | `total_purchases` |
+| `total_articles` | `total_cards` |
+| `avg_order_value` | `avg_purchase_value` |
+| `spent` | `amount_spent` (all money queries) |
+| `topSellers` (return key) | `bySeller` |
+
+Because `summary.total_purchases` was `undefined`, `hasData` was always
+`false` and the empty-state was permanently shown.
+
+**Also added** missing queries: `foilVsNormal` (foil doughnut chart),
+`prevSummary` (trend arrows), and `avg_card_cost` (per-item cost KPI).
+
+### 2. Inventory page showed "📦 NO INVENTORY" and no stats
+
+Three separate issues on the Inventory page:
+
+- `analyticsHandlers.js` returned `inventory` as a bare array; `renderInventory`
+  guards `!inv.items`, so it always returned early. **Fix**: wrapped as
+  `{ items, totalValue }`.
+- `renderInventory` never toggled `#inventory-empty-state` / `#inventory-dashboard`.
+  **Fix**: added visibility toggle and a 5-KPI grid (Unique Cards, Total on Hand,
+  Total Cost, Est. Value, Mkt Value).
+- `renderManaboxRows` never showed `#manabox-table-wrap` (default `display:none`).
+  **Fix**: added toggle of `#manabox-empty` / `#manabox-table-wrap` based on
+  row count.
+
+---
+
+## Bug Fixes in v1.7.3
+
+### 1. Apply / Clear filter buttons had no effect
+
+`btn-apply-filter` and `btn-clear-filter` were present in `index.html` but their
+`addEventListener` calls were never migrated from `renderer.legacy.js` to the
+modular renderer. **Fix**: added both handlers to `renderer/features/datePresets.js`
+alongside the existing preset-button handler, sharing a `reloadAll()` helper.
+
+### 2. Preset modal didn't close after saving
+
+The confirm handler (`btn-confirm-save-preset`) awaited `saveFilterPreset`
+without a `try/finally` — any IPC error prevented `classList.remove('show')`.
+Additionally, the × button (`preset-modal-close`) and backdrop click had no
+listeners at all.
+
+**Fix**: extracted `closePresetModal()` helper; placed `closePresetModal()` in
+a `finally` block; added listeners for the × button and backdrop click.
+
+### 3. Five XLSX export buttons had no listeners
+
+`btn-export-{orders,cards,purchases,pnl,inventory}-xlsx` existed in `index.html`
+but were never wired in the modular renderer. Added handlers in the respective
+tab modules, each passing `{ type, rows }` with the current in-memory data from
+`state`.
+
+### 4. `exportXlsx` payload mismatch
+
+Three existing calls (`btn-export-pnl`, `btn-export-inventory`, `btn-export-manabox-xlsx`)
+called `window.mtg.exportXlsx('pnl')` etc. with a bare string, but the
+`EXPORT_XLSX` handler destructures `{ type, rows }`. All three were updated to
+pass the correct object payload.
+
+### 5. `EXPORT_CSV` extended to accept computed rows
+
+P&L and Inventory data is computed in memory — there are no SQL queries for
+them in `fileHandlers.js`. `EXPORT_CSV` was updated to accept either a bare
+type string (runs a DB query) or `{ type, rows }` (writes `rows` directly to
+the file).
+
+### 6. `profitLoss` → `pnl` rename (analytics key mismatch)
+
+`analyticsHandlers.js` returned `profitLoss` but `renderAnalytics` read `d.pnl`
+— the P&L table was always empty. Renamed the return key to `pnl`.
+
+### 7. `revenueVsCostByMonth` added to analytics
+
+`renderAnalytics` rendered a Revenue vs Cost bar chart from
+`d.revenueVsCostByMonth` but the handler never computed it. Added aggregation
+grouped by month from `soldItems` / `boughtItems`.
+
+### 8. `inventory-search` static listener
+
+The inventory search was bound dynamically inside `renderInventory()`, stacking
+a new listener on every data refresh. Replaced with a single static
+`addEventListener` at module load in `analytics.js`.
