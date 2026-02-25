@@ -22,7 +22,29 @@ export async function loadAnalyticsData() {
 export function renderAnalytics(d) {
   state.analyticsData = d;
 
+  // Toggle P&L page empty-state / dashboard visibility
+  const hasData = (d.pnl?.length > 0) || (d.revenueVsCostByMonth?.length > 0);
+  document.getElementById('pnl-empty-state').style.display = hasData ? 'none'  : 'flex';
+  document.getElementById('pnl-dashboard').style.display   = hasData ? 'block' : 'none';
+  if (!hasData) { return; }
+
   renderPnlRows(d.pnl || []);
+
+  // P&L KPI summary
+  const kpiEl = document.getElementById('pnl-kpi-grid');
+  if (kpiEl && d.pnl?.length) {
+    const totalRevenue = d.pnl.reduce((s, r) => s + (r.total_revenue || 0), 0);
+    const totalCost    = d.pnl.reduce((s, r) => s + (r.total_cost    || 0), 0);
+    const totalProfit  = d.pnl.reduce((s, r) => s + (r.profit        || 0), 0);
+    const avgMargin    = totalCost > 0 ? (totalProfit / totalCost * 100).toFixed(1) + '%' : '—';
+    kpiEl.innerHTML = [
+      { label: 'Total Revenue', value: fmt(totalRevenue), cls: 'gold' },
+      { label: 'Total Cost',    value: fmt(totalCost),    cls: 'red' },
+      { label: 'Total Profit',  value: fmt(totalProfit),  cls: totalProfit >= 0 ? 'green' : 'red' },
+      { label: 'Avg Margin',    value: avgMargin,          cls: '' },
+    ].map(k => `<div class="kpi"><div class="kpi-label">${k.label}</div><div class="kpi-value ${k.cls}">${k.value}</div></div>`).join('');
+  }
+
   renderTimeToSellRows(d.timeToSell || []);
   renderRepeatBuyers(d.repeatBuyers || []);
   renderSetROI(d.setROI || []);

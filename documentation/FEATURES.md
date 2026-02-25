@@ -16,6 +16,7 @@
 | 1.7.2   | 2026‑02    | Fix: purchases dashboard "no data" (wrong SQL aliases), inventory empty-state never dismissed, ManaBox table never shown, missing `foilVsNormal`/`prevSummary`/`avg_card_cost` queries |
 | 1.7.3   | 2026‑02    | Fix: Apply/Clear filter buttons unwired, preset modal didn't close, 5 XLSX buttons missing, `exportXlsx` payload mismatch, `profitLoss`→`pnl` rename, add `revenueVsCostByMonth` to analytics |
 | 1.7.4   | 2026‑02    | Fix: Orders repeat-buyers panel never shown (missing data source, wrong IDs), purchases dashboard never rendered (5 element ID mismatches between HTML and renderer) |
+| 1.7.5   | 2026‑02    | Fix: P&L page always showed empty-state (pnl-empty-state/pnl-dashboard never toggled), pnl-kpi-grid blank, manabox-count/inventory-count elements missing from HTML, no Cancel button in preset modal |
 
 ---
 
@@ -836,3 +837,52 @@ state.
 **Also added** two previously un-rendered charts:
 - `chart-spend-time` — line chart of daily spend from `spendByDay`
 - `chart-purchase-rarity` — doughnut of spend by rarity from `byRarity`
+
+---
+
+## Bug Fixes in v1.7.5
+
+The same root cause as previous patches — element IDs in the renderer that didn't
+match HTML, or renderer logic that forgot to toggle visibility.
+
+### 1. P&L / Analytics page always showed "No Cross Data Yet"
+
+`renderAnalytics` never toggled `pnl-empty-state` / `pnl-dashboard`.
+`pnl-dashboard` defaulted to `display:none` and was never shown regardless of
+whether data was present.
+
+**Fix**: added `hasData` check at the top of `renderAnalytics` using
+`(d.pnl?.length > 0) || (d.revenueVsCostByMonth?.length > 0)`, toggling both
+elements with the same show/hide pattern used by all other pages.
+
+### 2. `pnl-kpi-grid` never populated
+
+`index.html` has a `<div class="kpi-grid" id="pnl-kpi-grid">` at the top of the
+P&L dashboard but no renderer code wrote to it.
+
+**Fix**: after `renderPnlRows`, `d.pnl` is reduced to four KPIs — Total Revenue,
+Total Cost, Total Profit, and Avg Margin — written to `pnl-kpi-grid`.
+
+### 3. `manabox-count` element missing from HTML
+
+`manabox.js` wrote `${n} cards` to `manabox-count` via an `if (el)` guard.
+The element didn't exist; the card count was silently discarded.
+
+**Fix**: added `<span id="manabox-count">` inline in the ManaBox panel title.
+
+### 4. `inventory-count` element missing from HTML
+
+`analytics.js` wrote `${n} cards · €x total value` to `inventory-count` via
+an `if (el)` guard. The element didn't exist.
+
+**Fix**: added `<div id="inventory-count">` below `inventory-kpi-grid` in the
+inventory page section.
+
+### 5. No Cancel button in preset modal
+
+`filterPresets.js` wired `btn-cancel-save-preset` with `?.addEventListener`
+but the button didn't exist in the HTML. The only close paths were the × button
+and backdrop click (added in v1.7.3).
+
+**Fix**: added a Cancel button with `id="btn-cancel-save-preset"` alongside the
+Save Preset button inside the modal.

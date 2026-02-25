@@ -325,6 +325,7 @@
       <div id="inventory-dashboard" style="display:none">
         <div class="page-header">Inventory</div>
         <div class="kpi-grid" id="inventory-kpi-grid"></div>
+        <div id="inventory-count" style="font-size:12px;color:var(--text-dim);text-align:right;margin-bottom:8px"></div>
         <div class="panel">
           <div class="panel-title">Cards on Hand</div>
           <div style="display:flex;gap:8px;margin-bottom:8px;justify-content:flex-end">
@@ -343,7 +344,7 @@
 
       <!-- ManaBox inventory import panel (always visible inside inventory page) -->
       <div class="panel" id="manabox-panel" style="margin-top:16px">
-        <div class="panel-title">ManaBox Inventory</div>
+        <div class="panel-title">ManaBox Inventory <span id="manabox-count" style="font-size:12px;color:var(--text-dim);font-weight:normal;margin-left:8px"></span></div>
         <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
           <button class="btn inv" id="btn-import-inventory-inline">+ Import ManaBox CSV</button>
           <input type="text" class="search-input" id="manabox-search" placeholder="Search card or set&#8230;" style="margin-bottom:0;width:220px">
@@ -467,7 +468,10 @@
     <div class="modal-body">
       <div style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">Give this date range a name to quickly apply it later.</div>
       <input type="text" class="search-input" id="preset-name-input" placeholder="e.g. Q1 2025" style="width:100%;margin-bottom:12px">
-      <button class="btn primary" id="btn-confirm-save-preset">Save Preset</button>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn primary" id="btn-confirm-save-preset" style="flex:1">Save Preset</button>
+        <button class="btn" id="btn-cancel-save-preset">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
