@@ -1,8 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 // Channel name constants — sourced from lib/ipcChannels.js (preload has full
-// Node.js access because sandbox is not enabled in this app's BrowserWindow).
-const CH = require('../lib/ipcChannels');
+// Node.js access because sandbox: false is set in the BrowserWindow webPreferences).
+const CH = require('./lib/ipcChannels');
 
 contextBridge.exposeInMainWorld('mtg', {
   // Sold-orders

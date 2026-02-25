@@ -104,6 +104,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false, // preload requires Node.js (require) to load lib/ipcChannels
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
