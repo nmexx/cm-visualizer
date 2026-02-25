@@ -14,6 +14,10 @@ export async function refreshPresetSelect() {
     presets.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
 }
 
+function closePresetModal() {
+  document.getElementById('preset-modal')?.classList.remove('show');
+}
+
 document.getElementById('btn-save-preset')?.addEventListener('click', () => {
   const modal = document.getElementById('preset-modal');
   if (modal) { modal.classList.add('show'); document.getElementById('preset-name-input').value = ''; }
@@ -24,18 +28,24 @@ document.getElementById('btn-confirm-save-preset')?.addEventListener('click', as
   if (!name) { return; }
   const from = document.getElementById('filter-from').value;
   const to   = document.getElementById('filter-to').value;
-  await window.mtg.saveFilterPreset({ name, from, to });
-  document.getElementById('preset-modal')?.classList.remove('show');
-  await refreshPresetSelect();
-  // small toast helper is importable but also on window; use direct approach
-  const toastEl = document.createElement('div');
-  toastEl.className = 'toast'; toastEl.textContent = `Preset saved: ${name}`;
-  document.body.appendChild(toastEl);
-  setTimeout(() => toastEl.remove(), 3000);
+  try {
+    await window.mtg.saveFilterPreset({ name, from, to });
+    await refreshPresetSelect();
+    const toastEl = document.createElement('div');
+    toastEl.className = 'toast'; toastEl.textContent = `Preset saved: ${name}`;
+    document.body.appendChild(toastEl);
+    setTimeout(() => toastEl.remove(), 3000);
+  } catch (e) {
+    console.error('[filterPresets] saveFilterPreset failed:', e);
+  } finally {
+    closePresetModal();
+  }
 });
 
-document.getElementById('btn-cancel-save-preset')?.addEventListener('click', () => {
-  document.getElementById('preset-modal')?.classList.remove('show');
+document.getElementById('btn-cancel-save-preset')?.addEventListener('click', closePresetModal);
+document.getElementById('preset-modal-close')?.addEventListener('click', closePresetModal);
+document.getElementById('preset-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('preset-modal')) { closePresetModal(); }
 });
 
 document.getElementById('preset-select')?.addEventListener('change', async e => {
