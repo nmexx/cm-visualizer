@@ -112,6 +112,9 @@ export async function init() {
   document.getElementById('setting-db-path').textContent = dbPath || '';
   document.getElementById('db-path-status').textContent  = dbPath ? dbPath.split(/[\\/]/).pop() : '';
 
+  const versionEl = document.getElementById('app-version');
+  if (versionEl) { versionEl.textContent = settings.version || ''; }
+
   applyTheme(settings.theme || 'dark');
   await refreshPresetSelect();
 

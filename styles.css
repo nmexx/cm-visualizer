@@ -122,6 +122,8 @@ body {
 }
 
 .status-item { display: flex; align-items: center; gap: 6px; }
+/* DB path status: pushed to the right edge of the status bar in monospace */
+.status-path { margin-left: auto; font-family: 'JetBrains Mono', monospace; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
 .status-dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); }
 
@@ -160,6 +162,8 @@ body {
 
 .nav-btn:hover { background: var(--bg3); border-color: var(--border); color: var(--text); }
 .nav-btn.active { background: color-mix(in srgb, var(--gold) 12%, transparent); border-color: var(--gold-dim); color: var(--gold-light); }
+/* Settings button naturally pushed to the bottom of the sidebar */
+.nav-btn--bottom { margin-top: auto; }
 
 .nav-btn[data-tip]:hover::after {
   content: attr(data-tip);
@@ -314,6 +318,14 @@ body {
 }
 
 .chart-wrap { position: relative; }
+/* Explicit height variants — set on .chart-wrap so chart.js can read offsetHeight */
+.chart-wrap.h-160 { height: 160px; }
+.chart-wrap.h-180 { height: 180px; }
+.chart-wrap.h-200 { height: 200px; }
+.chart-wrap.h-260 { height: 260px; }
+
+/* Horizontal scroll wrapper for wide tables */
+.scroll-x { overflow-x: auto; }
 
 /* ── Table ── */
 .data-table {
