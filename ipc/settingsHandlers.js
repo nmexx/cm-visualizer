@@ -40,8 +40,7 @@ function register(ctx) {
   });
 
   ipcMain.handle(CH.GET_FILTER_PRESETS, async () => {
-    const rows = db.prepare(`SELECT key, value FROM settings WHERE key LIKE 'preset_%'`).all();
-    return rows.map(r => ({ name: r.key.slice(7), ...JSON.parse(r.value) }));
+    return settings.getPresets();
   });
 
   ipcMain.handle(CH.DELETE_FILTER_PRESET, async (_, name) => {
@@ -61,6 +60,12 @@ function register(ctx) {
   });
 
   // ─── Auto-updater ──────────────────────────────────────────────────────────
+  // Track whether a downloaded update is ready to install
+  let updateDownloaded = false;
+  if (autoUpdater) {
+    autoUpdater.on('update-downloaded', () => { updateDownloaded = true; });
+  }
+
   ipcMain.handle(CH.CHECK_FOR_UPDATE, async () => {
     if (!autoUpdater)     { return { status: 'unavailable' }; }
     if (!app.isPackaged)  { return { status: 'dev' }; }
@@ -73,7 +78,12 @@ function register(ctx) {
   });
 
   ipcMain.handle(CH.INSTALL_UPDATE, async () => {
-    autoUpdater?.downloadUpdate().catch(() => {});
+    if (!autoUpdater) { return; }
+    if (updateDownloaded) {
+      autoUpdater.quitAndInstall(false, true);
+    } else {
+      autoUpdater.downloadUpdate().catch(() => {});
+    }
   });
 }
 

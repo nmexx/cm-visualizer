@@ -3,7 +3,7 @@
  */
 'use strict';
 
-const { ipcMain } = require('electron');
+const { ipcMain, app } = require('electron');
 const path = require('path');
 const CH   = require('../lib/ipcChannels');
 const { getSalesStats }   = require('../lib/repositories/salesRepo');
@@ -30,6 +30,40 @@ const {
 function register(ctx) {
   const { db, settings, priceGuideCache, priceGuide } = ctx;
 
+  // ─── Prepared statements (compiled once, reused on every call) ────────────
+  const stmtSoldItems   = db.prepare(`
+    SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price, i.is_foil,
+           o.date_of_purchase AS date_of_sale
+    FROM order_items i
+    JOIN orders o ON o.order_id = i.order_id
+    WHERE o.date_of_purchase >= COALESCE(?, o.date_of_purchase)
+      AND o.date_of_purchase <= COALESCE(?, o.date_of_purchase)
+  `);
+  const stmtBoughtItems = db.prepare(`
+    SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price, i.is_foil,
+           p.date_of_purchase
+    FROM purchase_items i
+    JOIN purchases p ON p.order_id = i.order_id
+    WHERE p.date_of_purchase >= COALESCE(?, p.date_of_purchase)
+      AND p.date_of_purchase <= COALESCE(?, p.date_of_purchase)
+  `);
+  const stmtAllOrders   = db.prepare(`
+    SELECT username, buyer_name, merchandise_value, article_count
+    FROM orders
+    WHERE date_of_purchase >= COALESCE(?, date_of_purchase)
+      AND date_of_purchase <= COALESCE(?, date_of_purchase)
+  `);
+  const stmtAllSold     = db.prepare(`
+    SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity,
+           o.date_of_purchase AS date_of_sale
+    FROM order_items i JOIN orders o ON o.order_id = i.order_id
+  `);
+  const stmtAllBought   = db.prepare(`
+    SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity,
+           i.product_id, p.date_of_purchase
+    FROM purchase_items i JOIN purchases p ON p.order_id = i.order_id
+  `);
+
   // ─── Sales dashboard ───────────────────────────────────────────────────────
   ipcMain.handle(CH.GET_STATS, async (_, filters) => {
     const stats = getSalesStats(db, filters || {});
@@ -48,41 +82,12 @@ function register(ctx) {
     const dateTo    = sanitizeDate(filters?.dateTo)   ?? null;
     const dateToEnd = dateTo ? dateTo + ' 23:59:59'   : null;
 
-    const soldItems = db.prepare(`
-      SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price, i.is_foil
-      FROM order_items i
-      JOIN orders o ON o.order_id = i.order_id
-      WHERE o.date_of_purchase >= COALESCE(?, o.date_of_purchase)
-        AND o.date_of_purchase <= COALESCE(?, o.date_of_purchase)
-    `).all(dateFrom, dateToEnd);
-
-    const boughtItems = db.prepare(`
-      SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price, i.is_foil
-      FROM purchase_items i
-      JOIN purchases p ON p.order_id = i.order_id
-      WHERE p.date_of_purchase >= COALESCE(?, p.date_of_purchase)
-        AND p.date_of_purchase <= COALESCE(?, p.date_of_purchase)
-    `).all(dateFrom, dateToEnd);
-
-    const allOrders = db.prepare(`
-      SELECT username, buyer_name, merchandise_value, article_count
-      FROM orders
-      WHERE date_of_purchase >= COALESCE(?, date_of_purchase)
-        AND date_of_purchase <= COALESCE(?, date_of_purchase)
-    `).all(dateFrom, dateToEnd);
-
+    const soldItems      = stmtSoldItems.all(dateFrom, dateToEnd);
+    const boughtItems    = stmtBoughtItems.all(dateFrom, dateToEnd);
+    const allOrders      = stmtAllOrders.all(dateFrom, dateToEnd);
     // Always use full history for inventory / time-to-sell
-    const allSoldItems = db.prepare(`
-      SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity,
-             o.date_of_purchase AS date_of_sale
-      FROM order_items i JOIN orders o ON o.order_id = i.order_id
-    `).all();
-
-    const allBoughtItems = db.prepare(`
-      SELECT i.card_name, i.set_name, i.quantity, i.price, i.is_foil, i.rarity,
-             i.product_id, p.date_of_purchase
-      FROM purchase_items i JOIN purchases p ON p.order_id = i.order_id
-    `).all();
+    const allSoldItems   = stmtAllSold.all();
+    const allBoughtItems = stmtAllBought.all();
 
     const inventoryItems = enrichInventoryWithMarketPrices(
       computeInventory(allBoughtItems, allSoldItems), priceGuideCache
@@ -119,7 +124,7 @@ function register(ctx) {
   // ─── Price guide download ──────────────────────────────────────────────────
   ipcMain.handle(CH.DOWNLOAD_PRICE_GUIDE, async () => {
     if (!priceGuide.path) {
-      priceGuide.path = path.join(require('electron').app.getPath('userData'), 'price_guide.json');
+      priceGuide.path = path.join(app.getPath('userData'), 'price_guide.json');
     }
     try {
       const { count, createdAt } = await downloadPriceGuide(priceGuide.path);

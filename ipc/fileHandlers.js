@@ -15,6 +15,38 @@ const XLSX  = require('xlsx');
 const CH    = require('../lib/ipcChannels');
 
 /**
+ * Wrap a cell value for RFC-4180 CSV: always quote, double internal quotes.
+ * @param {*} v
+ * @returns {string}
+ */
+function csvCell(v) {
+  const s = String(v ?? '');
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+/**
+ * Run an importer function over an array of file paths, accumulate totals.
+ * @param {string[]} filePaths
+ * @param {(fp: string) => {inserted: number, skipped: number}} importFn
+ * @returns {{ totalInserted: number, totalSkipped: number, results: object[] }}
+ */
+function importFiles(filePaths, importFn) {
+  let totalInserted = 0, totalSkipped = 0;
+  const results = [];
+  for (const fp of filePaths) {
+    try {
+      const r = importFn(fp);
+      totalInserted += r.inserted;
+      totalSkipped  += r.skipped;
+      results.push({ file: path.basename(fp), ...r });
+    } catch (e) {
+      results.push({ file: path.basename(fp), error: e.message });
+    }
+  }
+  return { totalInserted, totalSkipped, results };
+}
+
+/**
  * @param {object} ctx
  * @param {import('better-sqlite3').Database}               ctx.db
  * @param {() => Electron.BrowserWindow|null}               ctx.getMainWindow
@@ -45,25 +77,13 @@ function register(ctx) {
   // ─── Import sold-orders folder ─────────────────────────────────────────────
   ipcMain.handle(CH.IMPORT_FOLDER, async (_, folderPath) => {
     if (!fs.existsSync(folderPath)) { return { error: 'Folder not found' }; }
-
-    const files = fs.readdirSync(folderPath).filter(f => f.toLowerCase().endsWith('.csv'));
-    let totalInserted = 0, totalSkipped = 0;
-    const results = [];
-
-    for (const file of files) {
-      try {
-        const r = importCSVFileWithDB(path.join(folderPath, file));
-        totalInserted += r.inserted;
-        totalSkipped  += r.skipped;
-        results.push({ file, ...r });
-      } catch (e) {
-        results.push({ file, error: e.message });
-      }
-    }
-
+    const files = fs.readdirSync(folderPath)
+      .filter(f => f.toLowerCase().endsWith('.csv'))
+      .map(f => path.join(folderPath, f));
+    const r = importFiles(files, importCSVFileWithDB);
     settings.set('csv_folder_sold', folderPath);
     startSoldWatcher(folderPath);
-    return { totalInserted, totalSkipped, results };
+    return r;
   });
 
   // ─── Import sold-orders – programmatic file path (drag-drop) ──────────────
@@ -86,20 +106,7 @@ function register(ctx) {
       title: 'Select Cardmarket CSV export(s)',
     });
     if (result.canceled) { return null; }
-
-    let totalInserted = 0, totalSkipped = 0;
-    const results = [];
-    for (const filePath of result.filePaths) {
-      try {
-        const r = importCSVFileWithDB(filePath);
-        totalInserted += r.inserted;
-        totalSkipped  += r.skipped;
-        results.push({ file: path.basename(filePath), ...r });
-      } catch (e) {
-        results.push({ file: path.basename(filePath), error: e.message });
-      }
-    }
-    return { totalInserted, totalSkipped, results };
+    return importFiles(result.filePaths, importCSVFileWithDB);
   });
 
   // ─── Set watched sold-orders folder ───────────────────────────────────────
@@ -125,41 +132,19 @@ function register(ctx) {
       title: 'Select Cardmarket Purchased Orders CSV(s)',
     });
     if (result.canceled) { return null; }
-
-    let totalInserted = 0, totalSkipped = 0;
-    const results = [];
-    for (const filePath of result.filePaths) {
-      try {
-        const r = importPurchasedCSVFileWithDB(filePath);
-        totalInserted += r.inserted;
-        totalSkipped  += r.skipped;
-        results.push({ file: path.basename(filePath), ...r });
-      } catch (e) {
-        results.push({ file: path.basename(filePath), error: e.message });
-      }
-    }
-    return { totalInserted, totalSkipped, results };
+    return importFiles(result.filePaths, importPurchasedCSVFileWithDB);
   });
 
   // ─── Import purchased-orders folder ───────────────────────────────────────
   ipcMain.handle(CH.IMPORT_PURCHASE_FOLDER, async (_, folderPath) => {
     if (!fs.existsSync(folderPath)) { return { error: 'Folder not found' }; }
-    const files = fs.readdirSync(folderPath).filter(f => f.toLowerCase().endsWith('.csv'));
-    let totalInserted = 0, totalSkipped = 0;
-    const results = [];
-    for (const file of files) {
-      try {
-        const r = importPurchasedCSVFileWithDB(path.join(folderPath, file));
-        totalInserted += r.inserted;
-        totalSkipped  += r.skipped;
-        results.push({ file, ...r });
-      } catch (e) {
-        results.push({ file, error: e.message });
-      }
-    }
+    const files = fs.readdirSync(folderPath)
+      .filter(f => f.toLowerCase().endsWith('.csv'))
+      .map(f => path.join(folderPath, f));
+    const r = importFiles(files, importPurchasedCSVFileWithDB);
     settings.set('csv_folder_purchased', folderPath);
     startPurchasedWatcher(folderPath);
-    return { totalInserted, totalSkipped, results };
+    return r;
   });
 
   // ─── Set watched purchased-orders folder ──────────────────────────────────
@@ -177,7 +162,15 @@ function register(ctx) {
   });
 
   // ─── Import ManaBox inventory – file picker ────────────────────────────────
-  ipcMain.handle(CH.IMPORT_INVENTORY_FILE, async () => {
+  ipcMain.handle(CH.IMPORT_INVENTORY_FILE, async (_, filePath) => {
+    if (filePath) {
+      try {
+        const r = importInventoryFileWithDB(filePath);
+        return { totalInserted: r.inserted, totalSkipped: r.skipped, results: [{ file: path.basename(filePath), ...r }] };
+      } catch (e) {
+        return { totalInserted: 0, totalSkipped: 0, results: [{ file: path.basename(filePath), error: e.message }] };
+      }
+    }
     const win = getMainWindow();
     const result = await dialog.showOpenDialog(win, {
       properties: ['openFile', 'multiSelections'],
@@ -185,20 +178,7 @@ function register(ctx) {
       title: 'Select ManaBox Inventory CSV(s)',
     });
     if (result.canceled) { return null; }
-
-    let totalInserted = 0, totalSkipped = 0;
-    const results = [];
-    for (const filePath of result.filePaths) {
-      try {
-        const r = importInventoryFileWithDB(filePath);
-        totalInserted += r.inserted;
-        totalSkipped  += r.skipped;
-        results.push({ file: path.basename(filePath), ...r });
-      } catch (e) {
-        results.push({ file: path.basename(filePath), error: e.message });
-      }
-    }
-    return { totalInserted, totalSkipped, results };
+    return importFiles(result.filePaths, importInventoryFileWithDB);
   });
 
   // ─── Persist ManaBox inventory file path ──────────────────────────────────
@@ -256,9 +236,9 @@ function register(ctx) {
     }
 
     if (!rows.length) { return { ok: false, message: 'No data to export' }; }
-    const csv = Object.keys(rows[0]).join(';') + '\n' +
-      rows.map(r => Object.values(r).map(v => String(v ?? '').replace(/;/g, ',')).join(';')).join('\n');
-    fs.writeFileSync(result.filePath, csv, 'utf-8');
+    const header = Object.keys(rows[0]).map(csvCell).join(';');
+    const body   = rows.map(r => Object.values(r).map(csvCell).join(';')).join('\n');
+    fs.writeFileSync(result.filePath, header + '\n' + body, 'utf-8');
     return { ok: true, path: result.filePath };
   });
 

@@ -17,6 +17,7 @@
 | 1.7.3   | 2026‑02    | Fix: Apply/Clear filter buttons unwired, preset modal didn't close, 5 XLSX buttons missing, `exportXlsx` payload mismatch, `profitLoss`→`pnl` rename, add `revenueVsCostByMonth` to analytics |
 | 1.7.4   | 2026‑02    | Fix: Orders repeat-buyers panel never shown (missing data source, wrong IDs), purchases dashboard never rendered (5 element ID mismatches between HTML and renderer) |
 | 1.7.5   | 2026‑02    | Fix: P&L page always showed empty-state (pnl-empty-state/pnl-dashboard never toggled), pnl-kpi-grid blank, manabox-count/inventory-count elements missing from HTML, no Cancel button in preset modal |
+| 1.8.0   | 2026‑02    | IPC reliability overhaul: fix revenueVsCostByMonth always empty (SQL missing date columns), fix IMPORT_INVENTORY_FILE ignoring path arg, fix INSTALL_UPDATE re-downloading instead of installing, RFC-4180 CSV escaping, prepared-statement caching, deduplicated import loops, SettingsStore.getPresets() |
 
 ---
 
@@ -886,3 +887,94 @@ and backdrop click (added in v1.7.3).
 
 **Fix**: added a Cancel button with `id="btn-cancel-save-preset"` alongside the
 Save Preset button inside the modal.
+
+---
+
+## IPC Reliability Overhaul in v1.8.0
+
+Nine issues — three runtime bugs and six code-quality problems — discovered
+through a targeted audit of the three IPC handler files.
+
+### Bug 1: `revenueVsCostByMonth` always returned an empty array
+
+The SQL queries in `analyticsHandlers.js` that build `soldItems` and
+`boughtItems` did not `SELECT` the date columns (`date_of_purchase`,
+`date_of_sale`). The downstream grouping code therefore found no dates and
+produced an empty result, so the Revenue vs Cost chart was permanently blank.
+
+**Fix**: added `o.date_of_purchase AS date_of_sale` to the sold-items query and
+`p.date_of_purchase` to the purchased-items query.
+
+### Bug 2: `IMPORT_INVENTORY_FILE` silently ignored the renderer-supplied path
+
+The IPC handler signature was `async () =>`, discarding Electron's event
+argument and the `filePath` passed by the renderer. Every call unconditionally
+opened a file-picker dialog, making it impossible to import an inventory file
+programmatically (e.g. on startup from a saved settings path).
+
+**Fix**: changed signature to `async (_, filePath)`. When `filePath` is
+provided the file is imported directly; otherwise the dialog is shown.
+
+### Bug 3: `INSTALL_UPDATE` downloaded the update a second time instead of installing
+
+`INSTALL_UPDATE` called `autoUpdater.downloadUpdate()` unconditionally. After
+the initial download the event `update-downloaded` fires, but the handler never
+checked that state — so clicking Install would start another download rather
+than calling `quitAndInstall()`.
+
+**Fix**: introduced an `updateDownloaded` flag. `autoUpdater.on('update-downloaded')`
+sets the flag to `true`. The handler now calls `quitAndInstall(false, true)`
+when the flag is set, and `downloadUpdate()` only on the first invocation.
+
+### Code Quality 4: `require('electron').app` inside an IPC handler
+
+The price-guide path was built with `require('electron').app.getPath(...)` inline
+inside the handler body, causing a fresh `require` call on every invocation.
+
+**Fix**: `app` is now destructured from `require('electron')` at the top of the
+module alongside the other Electron imports.
+
+### Code Quality 5: Prepared statements compiled on every `GET_ANALYTICS` call
+
+All five SQL statements in `GET_ANALYTICS` were created with `db.prepare()`
+inside the handler body, so SQLite compiled them afresh on every IPC call.
+
+**Fix**: all five statements are now compiled once inside `register()` (module
+initialisation) and referenced by closure in the handler.
+
+### Code Quality 6: Duplicate import-loop boilerplate in four handlers
+
+The pattern `for (const fp of filePaths) { try { … } catch (e) { … } }` was
+copy-pasted into `IMPORT_FOLDER`, `IMPORT_FILE`, `IMPORT_PURCHASE_FILE`, and
+`IMPORT_INVENTORY_FILE`.
+
+**Fix**: extracted a shared `importFiles(filePaths, importFn)` helper at the top
+of `fileHandlers.js`. All four handlers now delegate to it.
+
+### Code Quality 7: CSV export values not RFC-4180 escaped
+
+The CSV export replaced semicolons with a blank string but did not quote values
+or escape internal double-quotes, producing malformed CSV for values that
+contained commas, quotes, or newlines.
+
+**Fix**: added a `csvCell(v)` helper that wraps every value in double-quotes and
+doubles any internal double-quote characters (`"` → `""`), conforming to
+RFC 4180.
+
+### Code Quality 8: `GET_FILTER_PRESETS` bypassed `SettingsStore`, queried the DB directly
+
+The handler built its own SQL query with `db.prepare(...)` instead of going
+through the established `SettingsStore` abstraction, creating a second path
+for reading presets that could diverge from the store's behaviour.
+
+**Fix**: `GET_FILTER_PRESETS` now calls `settings.getPresets()`, keeping all
+settings I/O behind the store interface.
+
+### Code Quality 9: `SettingsStore.getPresets()` did not exist
+
+The above fix required adding the method. The constructor also lacked
+`this._db = db`, making ad-hoc `prepare()` calls inside methods impossible.
+
+**Fix**: added `this._db = db` as the first line of the constructor, and
+implemented `getPresets()` which returns all keys matching `preset_%` as an
+array of `{ name, from, to }` objects.

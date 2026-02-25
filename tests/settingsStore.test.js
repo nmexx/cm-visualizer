@@ -62,4 +62,47 @@ describe('SettingsStore', () => {
     expect(typeof all).toBe('object');
     expect(Array.isArray(all)).toBe(false);
   });
+
+  // ─── getPresets() ────────────────────────────────────────────────────────
+
+  test('getPresets() returns empty array when no presets exist', () => {
+    const store = makeStore();
+    expect(store.getPresets()).toEqual([]);
+  });
+
+  test('getPresets() returns a saved preset with correct shape', () => {
+    const store = makeStore();
+    store.set('preset_Q1 2024', JSON.stringify({ from: '2024-01-01', to: '2024-03-31' }));
+    const presets = store.getPresets();
+    expect(presets).toHaveLength(1);
+    expect(presets[0]).toEqual({ name: 'Q1 2024', from: '2024-01-01', to: '2024-03-31' });
+  });
+
+  test('getPresets() returns multiple presets', () => {
+    const store = makeStore();
+    store.set('preset_Alpha', JSON.stringify({ from: '2024-01-01', to: '2024-06-30' }));
+    store.set('preset_Beta',  JSON.stringify({ from: '2024-07-01', to: '2024-12-31' }));
+    const presets = store.getPresets();
+    expect(presets).toHaveLength(2);
+    const names = presets.map(p => p.name).sort();
+    expect(names).toEqual(['Alpha', 'Beta']);
+  });
+
+  test('getPresets() does not return non-preset settings', () => {
+    const store = makeStore();
+    store.set('theme', 'light');
+    store.set('csv_folder_sold', '/data');
+    store.set('preset_Only', JSON.stringify({ from: '2024-01-01', to: '2024-12-31' }));
+    const presets = store.getPresets();
+    expect(presets).toHaveLength(1);
+    expect(presets[0].name).toBe('Only');
+  });
+
+  test('getPresets() correctly strips the "preset_" prefix from the name', () => {
+    const store = makeStore();
+    store.set('preset_My Range', JSON.stringify({ from: '2025-01-01', to: '2025-03-31' }));
+    const presets = store.getPresets();
+    expect(presets[0].name).toBe('My Range');
+    expect(presets[0]).not.toHaveProperty('key');
+  });
 });
