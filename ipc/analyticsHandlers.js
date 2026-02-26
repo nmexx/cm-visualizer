@@ -49,6 +49,16 @@ function register(ctx) {
       AND p.date_of_purchase <= COALESCE(?, p.date_of_purchase)
       AND i.exclude_from_pl = 0
   `);
+  // For inventory: include all purchased items, even those excluded from P&L
+  // (users still own these cards, they're just not for resale)
+  const stmtAllBoughtForInventory = db.prepare(`
+    SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price, i.is_foil,
+           i.product_id, p.date_of_purchase
+    FROM purchase_items i
+    JOIN purchases p ON p.order_id = i.order_id
+    WHERE p.date_of_purchase >= COALESCE(?, p.date_of_purchase)
+      AND p.date_of_purchase <= COALESCE(?, p.date_of_purchase)
+  `);
   const stmtAllOrders   = db.prepare(`
     SELECT username, buyer_name, merchandise_value, article_count
     FROM orders
@@ -90,8 +100,9 @@ function register(ctx) {
     const boughtItems    = stmtBoughtItems.all(dateFrom, dateToEnd);
     const allOrders      = stmtAllOrders.all(dateFrom, dateToEnd);
     // For inventory: use date-filtered data when available, fallback to full history
+    // Use separate inventory query that includes items marked as exclude_from_pl
     const allSoldItems   = dateToEnd ? stmtSoldItems.all(dateFrom, dateToEnd) : stmtAllSold.all();
-    const allBoughtItems = dateToEnd ? stmtBoughtItems.all(dateFrom, dateToEnd) : stmtAllBought.all();
+    const allBoughtItems = dateToEnd ? stmtAllBoughtForInventory.all(dateFrom, dateToEnd) : stmtAllBought.all();
 
     const allInventoryItems = enrichInventoryWithMarketPrices(
       computeInventory(allBoughtItems, allSoldItems), priceGuideCache

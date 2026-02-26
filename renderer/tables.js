@@ -308,9 +308,9 @@ export const stPnl = new SortableTable('table-pnl',
   [{ key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
    { key: 'qty_sold', type: 'num' }, { key: 'total_revenue', type: 'num' },
    { key: 'total_cost', type: 'num' }, { key: 'profit', type: 'num' },
-   { key: 'margin_pct', type: 'num' }],
+   { key: 'margin_pct', type: 'num' }, null],  // null = action cell (not sortable)
   renderPnlRows,
-  () => state.analyticsData?.profitLoss || []);
+  () => state.analyticsData?.pnl || []);
 
 export const stTimeToSell = new SortableTable('table-time-to-sell',
   [{ key: 'card_name', type: 'str' }, { key: 'set_name', type: 'str' },
