@@ -95,6 +95,8 @@ function register(ctx) {
       computeInventory(allBoughtItems, allSoldItems), priceGuideCache
     );
     const inventoryTotalValue = allInventoryItems.reduce((s, r) => s + (r.estimated_value || 0), 0);
+    const inventoryTotalOnHand = allInventoryItems.reduce((s, r) => s + (r.qty_on_hand || 0), 0);
+    const inventoryTotalMarketValue = allInventoryItems.reduce((s, r) => s + (r.market_value || 0), 0);
     
     // Paginate inventory for large datasets (1000 items per page)
     const inventoryStart = (inventoryPage - 1) * inventoryPageSize;
@@ -120,12 +122,14 @@ function register(ctx) {
     return {
       pnl:                 computeProfitLoss(soldItems, boughtItems),
       inventory: {
-        items:      inventoryItems,
-        page:       inventoryPage,
-        pageSize:   inventoryPageSize,
-        pageCount:  inventoryPageCount,
-        totalCount: allInventoryItems.length,
-        totalValue: inventoryTotalValue,
+        items:              inventoryItems,
+        page:               inventoryPage,
+        pageSize:           inventoryPageSize,
+        pageCount:          inventoryPageCount,
+        totalCount:         allInventoryItems.length,
+        totalValue:         inventoryTotalValue,
+        totalOnHand:        inventoryTotalOnHand,
+        totalMarketValue:   inventoryTotalMarketValue,
       },
       repeatBuyers:        computeRepeatBuyers(allOrders),
       setROI:              computeSetROI(allSoldItems, allBoughtItems),
