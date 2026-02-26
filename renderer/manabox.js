@@ -8,8 +8,11 @@ import { renderManaboxRows, stManabox } from './tables.js';
 export async function loadManaboxInventory() {
   stManabox?.reset();
   const result = await window.mtg.getInventoryList();
-  state.manaboxItems = result || [];
-  renderManaboxInventory(state.manaboxItems);
+  // GET_INVENTORY_LIST returns { items, page, pageCount, totalCount } for pagination
+  const items = result?.items || result || [];
+  state.manaboxItems = items;
+  state.manaboxPagination = result?.pageCount ? result : null; // Store pagination info if available
+  renderManaboxInventory(items);
 }
 
 export function renderManaboxInventory(items) {
