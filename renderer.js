@@ -26,6 +26,20 @@ import './renderer/features/scryfall.js';
 import { init } from './renderer/settings.js';
 
 /* ─── Tab navigation ─────────────────────────────────────────────────────── */
+// Handle collapsible nav groups
+document.querySelectorAll('.nav-parent[data-toggle]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const targetId = btn.dataset.toggle;
+    const target = document.getElementById(targetId);
+    const isExpanded = target.classList.contains('expanded');
+    
+    // Toggle expanded state
+    btn.classList.toggle('expanded', !isExpanded);
+    target.classList.toggle('expanded', !isExpanded);
+  });
+});
+
+// Handle page navigation
 document.querySelectorAll('.nav-btn[data-page]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));

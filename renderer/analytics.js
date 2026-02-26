@@ -110,11 +110,25 @@ export function renderInventory(inv) {
 
 // Static inventory search — reads from state.sortedInventory set by renderInventory
 document.getElementById('inventory-search')?.addEventListener('input', () => {
+  state.inventoryPage = 1;
   const q = document.getElementById('inventory-search').value.toLowerCase().trim();
-  const filtered = (state.sortedInventory || []).filter(item =>
+  const base = state.inventoryDisplayBase || state.sortedInventory || [];
+  const filtered = q ? base.filter(item =>
     !q || item.card_name?.toLowerCase().includes(q) || item.set_name?.toLowerCase().includes(q)
-  );
+  ) : base;
   renderInventoryRows(filtered);
+});
+
+document.getElementById('inventory-prev')?.addEventListener('click', () => {
+  state.inventoryPage--;
+  const base = state.inventoryDisplayBase || state.sortedInventory || [];
+  renderInventoryRows(base);
+});
+
+document.getElementById('inventory-next')?.addEventListener('click', () => {
+  state.inventoryPage++;
+  const base = state.inventoryDisplayBase || state.sortedInventory || [];
+  renderInventoryRows(base);
 });
 
 /* ─── Import / export button handlers ───────────────────────────────────── */

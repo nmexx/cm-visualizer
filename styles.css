@@ -165,6 +165,56 @@ body {
 /* Settings button naturally pushed to the bottom of the sidebar */
 .nav-btn--bottom { margin-top: auto; }
 
+/* ── Nav groups (collapsible sections) ── */
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.nav-parent {
+  position: relative;
+}
+
+.nav-parent::before {
+  content: '▸';
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+  transition: transform 0.2s;
+}
+
+.nav-parent.expanded::before {
+  transform: rotate(90deg);
+}
+
+.nav-children {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+  width: 100%;
+}
+
+.nav-children.expanded {
+  display: flex;
+}
+
+.nav-child {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.nav-child:hover {
+  opacity: 1;
+}
+
 .nav-btn[data-tip]:hover::after {
   content: attr(data-tip);
   position: absolute;
@@ -363,6 +413,8 @@ body {
 
 /* Action cells in tables (buttons/controls) */
 .data-table .action-cell { padding: 5px 8px; }
+.data-table .clickable-row { transition: background-color 0.15s; }
+.data-table .clickable-row:hover td { background: color-mix(in srgb, var(--gold) 8%, transparent); }
 .btn-exclude-from-pl {
   font-family: 'Rajdhani', sans-serif;
   font-size: 11px;
@@ -609,6 +661,25 @@ body {
 .search-input:focus { outline: none; border-color: var(--gold-dim); }
 .search-input::placeholder { color: var(--text-dim); }
 
+/* ── Toolbar row ── */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.toolbar .search-input {
+  margin-bottom: 0;
+  flex: 1;
+  width: auto;
+}
+.toolbar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 /* ── Scrollbar ── */
 #content::-webkit-scrollbar { width: 6px; }
 #content::-webkit-scrollbar-track { background: transparent; }
@@ -668,6 +739,32 @@ body {
   height: 1px;
   background: linear-gradient(to right, var(--gold-dim), transparent);
   max-width: 300px;
+}
+
+/* ── Overview sections ── */
+.overview-section {
+  margin-bottom: 40px;
+}
+
+.section-header {
+  font-family: 'Cinzel', serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--gold-dim), transparent);
+  max-width: 200px;
 }
 
 /* ══════════════════════════════════════════════════════════════════════

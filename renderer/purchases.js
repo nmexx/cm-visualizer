@@ -9,6 +9,8 @@ import { renderBoughtCardsRows, renderPurchasesRows, stBoughtCards, stPurchases 
 /* ─── Load & render ──────────────────────────────────────────────────────── */
 
 export async function loadPurchaseData() {
+  // Clear any previous selections when reloading data
+  state.selectedBoughtCards.clear();
   stBoughtCards?.reset(); stPurchases?.reset();
   const data = await window.mtg.getPurchaseStats(buildFilters('purchased'));
   renderPurchases(data);
@@ -91,3 +93,90 @@ document.getElementById('btn-export-purchases-xlsx').addEventListener('click', a
   if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
   else if (r) { toast(r.message || 'Export failed', 'error'); }
 });
+
+/* ─── Bulk exclusion from P&L ─────────────────────────────────────────────── */
+
+// Check all checkbox
+document.getElementById('bought-cards-check-all').addEventListener('change', (e) => {
+  const checkboxes = document.querySelectorAll('.bought-card-checkbox');
+  checkboxes.forEach(cb => {
+    cb.checked = e.target.checked;
+    const cardKey = cb.getAttribute('data-card-key');
+    if (e.target.checked) {
+      state.selectedBoughtCards.add(cardKey);
+    } else {
+      state.selectedBoughtCards.delete(cardKey);
+    }
+  });
+  // Update element that displays count (defined in tables.js)
+  const countEl = document.getElementById('selected-cards-count');
+  if (countEl) {
+    const count = state.selectedBoughtCards.size;
+    countEl.textContent = count > 0 ? `${count} card${count !== 1 ? 's' : ''} selected` : '';
+  }
+});
+
+// Exclude selected cards button
+document.getElementById('btn-exclude-selected-cards').addEventListener('click', async () => {
+  if (state.selectedBoughtCards.size === 0) {
+    toast('No cards selected', 'info');
+    return;
+  }
+  
+  showLoading(true);
+  let successCount = 0;
+  let failCount = 0;
+  
+  // Exclude each selected card
+  for (const cardKey of state.selectedBoughtCards) {
+    const parts = cardKey.split('||');
+    const cardName = parts[0];
+    const setName = parts[1];
+    
+    const result = await window.mtg.setPurchaseItemsExcludeFromPL({
+      card_name: cardName,
+      set_name: setName,
+      exclude: true
+    });
+    
+    if (result?.ok) {
+      successCount++;
+    } else {
+      failCount++;
+    }
+  }
+  
+  showLoading(false);
+  
+  if (successCount > 0) {
+    state.selectedBoughtCards.clear();
+    toast(`Excluded ${successCount} card${successCount !== 1 ? 's' : ''} from P&L analytics`, 'success');
+    // Reload purchases and analytics data
+    loadPurchaseData();
+    // Also reload analytics to show the updated P&L
+    const { loadAnalyticsData } = await import('./analytics.js');
+    loadAnalyticsData();
+  }
+  if (failCount > 0) {
+    toast(`Failed to exclude ${failCount} card${failCount !== 1 ? 's' : ''}`, 'error');
+  }
+});
+
+/* ─── Bought cards pagination & search ───────────────────────────────────── */
+
+document.getElementById('bought-cards-search').addEventListener('input', () => {
+  state.boughtCardsPage = 1;
+  if (state.purchaseData) { renderBoughtCardsPage(state.boughtCardsDisplayBase || state.purchaseData.topBoughtCards || []); }
+});
+document.getElementById('bought-cards-prev').addEventListener('click', () => {
+  state.boughtCardsPage--;
+  if (state.purchaseData) { renderBoughtCardsPage(state.boughtCardsDisplayBase || state.purchaseData.topBoughtCards || []); }
+});
+document.getElementById('bought-cards-next').addEventListener('click', () => {
+  state.boughtCardsPage++;
+  if (state.purchaseData) { renderBoughtCardsPage(state.boughtCardsDisplayBase || state.purchaseData.topBoughtCards || []); }
+});
+
+function renderBoughtCardsPage(cards) {
+  renderBoughtCardsRows(cards);
+}

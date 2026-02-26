@@ -71,10 +71,15 @@
 <div id="app">
   <div id="sidebar">
     <button class="nav-btn active" data-page="overview"   data-tip="Overview">&#128202;</button>
-    <button class="nav-btn"        data-page="cards"      data-tip="Cards">&#127183;</button>
-    <button class="nav-btn"        data-page="orders"     data-tip="Orders">&#128203;</button>
-    <button class="nav-btn"        data-page="sets"       data-tip="Sets">&#127924;</button>
-    <button class="nav-btn"        data-page="purchases"  data-tip="Purchases">&#128176;</button>
+    <div class="nav-group">
+      <button class="nav-btn nav-parent expanded" data-toggle="sales-group" data-tip="Sales">&#128176;</button>
+      <div id="sales-group" class="nav-children expanded">
+        <button class="nav-btn nav-child" data-page="cards"  data-tip="Cards">&#127183;</button>
+        <button class="nav-btn nav-child" data-page="orders" data-tip="Orders">&#128203;</button>
+        <button class="nav-btn nav-child" data-page="sets"   data-tip="Sets">&#127924;</button>
+      </div>
+    </div>
+    <button class="nav-btn"        data-page="purchases"  data-tip="Purchases">&#128184;</button>
     <button class="nav-btn"        data-page="pnl"        data-tip="P&amp;L &amp; Analytics">&#128200;</button>
     <button class="nav-btn"        data-page="inventory"  data-tip="Inventory">&#128230;</button>
     <button class="nav-btn nav-btn--bottom" data-page="settings" data-tip="Settings">&#9881;&#65039;</button>
@@ -93,20 +98,45 @@
       <div id="dashboard-content" style="display:none">
         <div class="page-header">Overview</div>
         <div id="missing-months-sales" class="missing-months-banner" style="display:none"></div>
-        <div class="kpi-grid" id="kpi-grid"></div>
-        <div class="charts-row cols-2">
-          <div class="panel"><div class="panel-title">Revenue over Time</div>
-            <div class="chart-wrap h-200"><canvas id="chart-revenue-time"></canvas></div></div>
-          <div class="panel"><div class="panel-title">Monthly Summary</div>
-            <div class="chart-wrap h-200"><canvas id="chart-monthly"></canvas></div></div>
+
+        <!-- SALES SECTION -->
+        <div class="overview-section">
+          <div class="section-header">Sales</div>
+          <div class="kpi-grid" id="kpi-grid"></div>
+          <div class="charts-row cols-2">
+            <div class="panel"><div class="panel-title">Revenue over Time</div>
+              <div class="chart-wrap h-200"><canvas id="chart-revenue-time"></canvas></div></div>
+            <div class="panel"><div class="panel-title">Monthly Summary</div>
+              <div class="chart-wrap h-200"><canvas id="chart-monthly"></canvas></div></div>
+          </div>
+          <div class="charts-row cols-3">
+            <div class="panel"><div class="panel-title">Top Countries</div>
+              <div class="chart-wrap h-180"><canvas id="chart-countries"></canvas></div></div>
+            <div class="panel"><div class="panel-title">Foil vs Normal</div>
+              <div class="chart-wrap h-180"><canvas id="chart-foil"></canvas></div></div>
+            <div class="panel"><div class="panel-title">By Rarity</div>
+              <div class="chart-wrap h-180"><canvas id="chart-rarity"></canvas></div></div>
+          </div>
         </div>
-        <div class="charts-row cols-3">
-          <div class="panel"><div class="panel-title">Top Countries</div>
-            <div class="chart-wrap h-180"><canvas id="chart-countries"></canvas></div></div>
-          <div class="panel"><div class="panel-title">Foil vs Normal</div>
-            <div class="chart-wrap h-180"><canvas id="chart-foil"></canvas></div></div>
-          <div class="panel"><div class="panel-title">By Rarity</div>
-            <div class="chart-wrap h-180"><canvas id="chart-rarity"></canvas></div></div>
+
+        <!-- PURCHASES SECTION -->
+        <div class="overview-section">
+          <div class="section-header">Purchases</div>
+          <div class="kpi-grid" id="overview-purchase-kpis"></div>
+          <div class="charts-row cols-2">
+            <div class="panel"><div class="panel-title">Spending over Time</div>
+              <div class="chart-wrap h-200"><canvas id="chart-purchase-time"></canvas></div></div>
+            <div class="panel"><div class="panel-title">Monthly Spending</div>
+              <div class="chart-wrap h-200"><canvas id="chart-purchase-monthly"></canvas></div></div>
+          </div>
+          <div class="charts-row cols-3">
+            <div class="panel"><div class="panel-title">Top Sellers</div>
+              <div class="chart-wrap h-180"><canvas id="chart-purchase-sellers"></canvas></div></div>
+            <div class="panel"><div class="panel-title">Foil vs Normal</div>
+              <div class="chart-wrap h-180"><canvas id="chart-purchase-foil"></canvas></div></div>
+            <div class="panel"><div class="panel-title">By Rarity</div>
+              <div class="chart-wrap h-180"><canvas id="chart-purchase-rarity"></canvas></div></div>
+          </div>
         </div>
       </div>
     </div>
@@ -114,9 +144,11 @@
     <!-- CARDS -->
     <div class="page" id="page-cards">
       <div class="page-header">Cards</div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;justify-content:flex-end">
-        <button class="btn" id="btn-export-cards">&#8595; CSV</button>
-        <button class="btn" id="btn-export-cards-xlsx">&#8595; XLSX</button>
+      <div class="toolbar" style="margin-bottom:12px">
+        <div class="toolbar-actions">
+          <button class="btn" id="btn-export-cards">&#8595; CSV</button>
+          <button class="btn" id="btn-export-cards-xlsx">&#8595; XLSX</button>
+        </div>
       </div>
       <div class="charts-row cols-3">
         <div class="panel"><div class="panel-title">Revenue by Language</div>
@@ -127,12 +159,20 @@
           <div class="chart-wrap h-200"><canvas id="chart-condition"></canvas></div></div>
       </div>
       <div class="panel" style="margin-bottom:16px">
-        <div class="panel-title">Top 20 Cards by Revenue</div>
+        <div class="panel-title">Top 50 Cards by Revenue</div>
+        <div class="toolbar">
+          <input type="text" class="search-input" id="top-cards-search" placeholder="Search card name or set&#8230;">
+        </div>
         <div class="scroll-x">
           <table class="data-table" id="table-top-cards">
             <thead><tr><th>#</th><th>Card Name</th><th>Set</th><th>Rarity</th><th>Qty Sold</th><th>Revenue</th><th>Share</th></tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+        <div class="pagination">
+          <span class="page-info" id="top-cards-page-info"></span>
+          <button class="btn" id="top-cards-prev">&#8249; Prev</button>
+          <button class="btn" id="top-cards-next">Next &#8250;</button>
         </div>
       </div>
       <!-- Foil Premium section -->
@@ -171,16 +211,18 @@
         </div>
       </div>
       <div class="panel">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-          <input type="text" class="search-input" id="orders-search" placeholder="Search buyer, country, order ID&#8230;" style="margin-bottom:0">
-          <button class="btn" id="btn-export-orders" style="margin-left:auto">&#8595; CSV</button>
-          <button class="btn" id="btn-export-orders-xlsx">&#8595; XLSX</button>
+        <div class="toolbar" style="flex-wrap:wrap;margin-bottom:12px">
+          <input type="text" class="search-input" id="orders-search" placeholder="Search buyer, country, order ID&#8230;">
+          <div class="toolbar-actions">
+            <button class="btn" id="btn-export-orders">&#8595; CSV</button>
+            <button class="btn" id="btn-export-orders-xlsx">&#8595; XLSX</button>
+          </div>
         </div>
         <div class="scroll-x">
           <table class="data-table" id="table-orders">
             <thead><tr>
               <th>Order ID</th><th>Date</th><th>Buyer</th><th>Country</th>
-              <th>Articles</th><th>Merchandise</th><th>Total</th><th>Commission</th>
+              <th>Articles</th><th>Merchandise</th><th>Shipment</th><th>Total</th><th>Commission</th>
             </tr></thead>
             <tbody></tbody>
           </table>
@@ -234,9 +276,11 @@
       <div id="purchase-dashboard" style="display:none">
         <div class="page-header">Purchases</div>
         <div id="missing-months-purchases" class="missing-months-banner" style="display:none"></div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;justify-content:flex-end">
-          <button class="btn" id="btn-export-purchases">&#8595; CSV</button>
-          <button class="btn" id="btn-export-purchases-xlsx">&#8595; XLSX</button>
+        <div class="toolbar" style="margin-bottom:12px">
+          <div class="toolbar-actions">
+            <button class="btn" id="btn-export-purchases">&#8595; CSV</button>
+            <button class="btn" id="btn-export-purchases-xlsx">&#8595; XLSX</button>
+          </div>
         </div>
         <div class="kpi-grid" id="purchase-kpi-grid"></div>
         <div class="charts-row cols-2">
@@ -254,12 +298,26 @@
             <div class="chart-wrap h-200"><canvas id="chart-purchase-rarity"></canvas></div></div>
         </div>
         <div class="panel" style="margin-bottom:16px">
-          <div class="panel-title">Top 20 Purchased Cards</div>
+          <div class="panel-title">Top 50 Purchased Cards</div>
+          <div class="toolbar">
+            <input type="text" class="search-input" id="bought-cards-search" placeholder="Search card name, set, rarity&#8230;">
+            <div class="toolbar-actions">
+              <button class="btn" id="btn-exclude-selected-cards" title="Mark selected cards as collection-only (exclude from P&L)">Exclude Selected</button>
+            </div>
+          </div>
           <div class="scroll-x">
             <table class="data-table" id="table-bought-cards">
-              <thead><tr><th>#</th><th>Card Name</th><th>Set</th><th>Rarity</th><th>Qty Bought</th><th>Spent</th><th>Orders</th></tr></thead>
+              <thead><tr><th style="width:24px"><input type="checkbox" id="bought-cards-check-all" title="Select/deselect all cards"></th><th>#</th><th>Card Name</th><th>Set</th><th>Rarity</th><th>Qty Bought</th><th>Spent</th><th>Orders</th><th>First Purchase</th><th>Last Purchase</th></tr></thead>
               <tbody></tbody>
             </table>
+          </div>
+          <div class="pagination">
+            <span class="page-info" id="bought-cards-page-info"></span>
+            <button class="btn" id="bought-cards-prev">&#8249; Prev</button>
+            <button class="btn" id="bought-cards-next">Next &#8250;</button>
+          </div>
+          <div style="margin-top:10px">
+            <span id="selected-cards-count" style="color:var(--text-dim); font-size:12px"></span>
           </div>
         </div>
         <div class="panel">
@@ -290,9 +348,11 @@
         <!-- P&L Table -->
         <div class="panel" style="margin-bottom:16px">
           <div class="panel-title">Profit &amp; Loss per Card (sold items matched against purchases)</div>
-          <div style="display:flex;gap:8px;margin-bottom:8px;justify-content:flex-end">
-            <button class="btn" id="btn-export-pnl">&#8595; CSV</button>
-            <button class="btn" id="btn-export-pnl-xlsx">&#8595; XLSX</button>
+          <div class="toolbar">
+            <div class="toolbar-actions">
+              <button class="btn" id="btn-export-pnl">&#8595; CSV</button>
+              <button class="btn" id="btn-export-pnl-xlsx">&#8595; XLSX</button>
+            </div>
           </div>
           <div class="scroll-x">
             <table class="data-table" id="table-pnl">
@@ -327,16 +387,23 @@
         <div id="inventory-count" style="font-size:12px;color:var(--text-dim);text-align:right;margin-bottom:8px"></div>
         <div class="panel">
           <div class="panel-title">Cards on Hand</div>
-          <div style="display:flex;gap:8px;margin-bottom:8px;justify-content:flex-end">
-            <input type="text" class="search-input" id="inventory-search" placeholder="Search card or set&#8230;" style="margin-bottom:0;width:220px">
-            <button class="btn" id="btn-export-inventory">&#8595; CSV</button>
-            <button class="btn" id="btn-export-inventory-xlsx">&#8595; XLSX</button>
+          <div class="toolbar">
+            <input type="text" class="search-input" id="inventory-search" placeholder="Search card or set&#8230;">
+            <div class="toolbar-actions">
+              <button class="btn" id="btn-export-inventory">&#8595; CSV</button>
+              <button class="btn" id="btn-export-inventory-xlsx">&#8595; XLSX</button>
+            </div>
           </div>
           <div class="scroll-x">
             <table class="data-table" id="table-inventory">
-              <thead><tr><th>Card</th><th>Set</th><th>Bought</th><th>Sold</th><th>On Hand</th><th>Avg Buy</th><th>Est. Value</th><th>Mkt Price</th><th>Mkt Value</th></tr></thead>
+              <thead><tr><th>Card</th><th>Set</th><th>Bought</th><th>Sold</th><th>On Hand</th><th>Avg Buy</th><th>Est. Value</th><th>Mkt Price</th><th>Diff %</th><th>Mkt Value</th></tr></thead>
               <tbody></tbody>
             </table>
+          </div>
+          <div class="pagination">
+            <span class="page-info" id="inventory-page-info"></span>
+            <button class="btn" id="inventory-prev">&#8249; Prev</button>
+            <button class="btn" id="inventory-next">Next &#8250;</button>
           </div>
         </div>
       </div>
@@ -344,17 +411,24 @@
       <!-- ManaBox inventory import panel (always visible inside inventory page) -->
       <div class="panel" id="manabox-panel" style="margin-top:16px">
         <div class="panel-title">ManaBox Inventory <span id="manabox-count" style="font-size:12px;color:var(--text-dim);font-weight:normal;margin-left:8px"></span></div>
-        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn inv" id="btn-import-inventory-inline">+ Import ManaBox CSV</button>
-          <input type="text" class="search-input" id="manabox-search" placeholder="Search card or set&#8230;" style="margin-bottom:0;width:220px">
-          <button class="btn" id="btn-export-manabox-xlsx">&#8595; XLSX</button>
+        <div class="toolbar" style="flex-wrap:wrap">
+          <input type="text" class="search-input" id="manabox-search" placeholder="Search card or set&#8230;">
+          <div class="toolbar-actions">
+            <button class="btn inv" id="btn-import-inventory-inline">+ Import ManaBox CSV</button>
+            <button class="btn" id="btn-export-manabox-xlsx">&#8595; XLSX</button>
+          </div>
         </div>
         <div id="manabox-empty" style="padding:24px;text-align:center;color:var(--text-dim);font-size:13px">No inventory imported yet. Use “+ Import ManaBox CSV” or the topbar button.</div>
         <div class="scroll-x" id="manabox-table-wrap" style="display:none">
           <table class="data-table" id="table-manabox">
-            <thead><tr><th>Card</th><th>Set</th><th>Code</th><th>Foil</th><th>Rarity</th><th>Qty</th><th>Buy Price</th><th>Cond</th><th>Lang</th></tr></thead>
+            <thead><tr><th>Card</th><th>Set</th><th>Code</th><th>Foil</th><th>Rarity</th><th>Qty</th><th>Buy Price</th><th>Mkt Price</th><th>Diff %</th><th>Cond</th><th>Lang</th></tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+        <div class="pagination" id="manabox-pagination" style="display:none;margin-top:8px">
+          <span class="page-info" id="manabox-page-info"></span>
+          <button class="btn" id="manabox-prev">&#8249; Prev</button>
+          <button class="btn" id="manabox-next">Next &#8250;</button>
         </div>
       </div>
     </div>
@@ -453,6 +527,30 @@
         <thead><tr><th>Date</th><th>Order ID</th><th>Articles</th><th>Merchandise</th><th>Commission</th></tr></thead>
         <tbody id="modal-orders-body"></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- Order/Purchase details modal (cards from an order) -->
+<div class="modal-overlay" id="order-details-modal">
+  <div class="modal" style="width:800px;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <div class="modal-title" id="order-details-modal-title">Order Details</div>
+      <button class="modal-close" id="order-details-modal-close">&#10005;</button>
+    </div>
+    <div class="modal-body" style="flex:1;display:flex;flex-direction:column">
+      <input type="text" class="search-input" id="order-items-search" placeholder="Search cards, set, rarity&#8230;" style="margin-bottom:8px">
+      <div class="scroll-x" style="flex:1">
+        <table class="data-table" id="order-items-table">
+          <thead><tr><th>#</th><th>Card Name</th><th>Set</th><th>Rarity</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="pagination" style="margin-top:8px">
+        <span class="page-info" id="order-items-page-info"></span>
+        <button class="btn" id="order-items-prev">&#8249; Prev</button>
+        <button class="btn" id="order-items-next">Next &#8250;</button>
+      </div>
     </div>
   </div>
 </div>

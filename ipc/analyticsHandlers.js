@@ -191,6 +191,32 @@ function register(ctx) {
       return { ok: false, error: e.message };
     }
   });
+
+  // ─── Get items (cards) from a specific order ────────────────────────────────
+  ipcMain.handle(CH.GET_ORDER_ITEMS, async (_, { order_id, type }) => {
+    try {
+      const table = type === 'purchase' ? 'purchase_items' : 'order_items';
+      const orderTable = type === 'purchase' ? 'purchases' : 'orders';
+      
+      const stmt = db.prepare(`
+        SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price,
+               (i.quantity * i.price) AS total
+        FROM ${table} i
+        WHERE i.order_id = ?
+        ORDER BY i.rowid
+      `);
+      
+      const items = stmt.all(order_id);
+      
+      // Get order info for header
+      const orderStmt = db.prepare(`SELECT * FROM ${orderTable} WHERE order_id = ?`);
+      const orderInfo = orderStmt.get(order_id);
+      
+      return { ok: true, items, orderInfo };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
 }
 
 module.exports = { register };

@@ -14,11 +14,15 @@ import {
 export async function loadData() {
   state.ordersDisplayBase = null;
   stTopCards?.reset(); stSets?.reset(); stOrders?.reset();
-  const data = await window.mtg.getStats(buildFilters());
-  renderDashboard(data);
+  const filters = buildFilters();
+  const [data, purchaseData] = await Promise.all([
+    window.mtg.getStats(filters),
+    window.mtg.getPurchaseStats(filters),
+  ]);
+  renderDashboard(data, purchaseData);
 }
 
-export function renderDashboard(d) {
+export function renderDashboard(d, purchaseData) {
   state.currentData = d;
   const s       = d.summary || {};
   const hasData = (s.total_orders || 0) > 0;
@@ -32,10 +36,11 @@ export function renderDashboard(d) {
 
   renderMissingMonths(d.missingMonths, 'missing-months-sales');
 
-  const netRevenue = (s.total_revenue || 0) - (s.total_commission || 0);
-  const commRate   = s.total_revenue > 0 ? ((s.total_commission / s.total_revenue) * 100).toFixed(1) + '%' : '0%';
-  const p          = d.prevSummary || {};
-  const prevNet    = (p.total_revenue || 0) - (p.total_commission || 0);
+  const netRevenue   = (s.total_revenue || 0) - (s.total_commission || 0) - (s.total_shipping || 0);
+  const commRate     = s.total_revenue > 0 ? ((s.total_commission / s.total_revenue) * 100).toFixed(1) + '%' : '0%';
+  const shippingRate = s.total_revenue > 0 ? ((s.total_shipping / s.total_revenue) * 100).toFixed(1) + '%' : '0%';
+  const p            = d.prevSummary || {};
+  const prevNet      = (p.total_revenue || 0) - (p.total_commission || 0) - (p.total_shipping || 0);
 
   const kpis = [
     { label: 'Total Revenue',   value: fmt(s.total_revenue),    cls: 'gold',  trend: trendHtml(s.total_revenue,    p.total_revenue) },
@@ -44,12 +49,36 @@ export function renderDashboard(d) {
     { label: 'Unique Buyers',   value: fmtNum(s.unique_buyers), cls: 'blue',  trend: '' },
     { label: 'Cards Sold',      value: fmtNum(s.total_articles),cls: '',      trend: trendHtml(s.total_articles,   p.total_articles) },
     { label: 'Avg Order Value', value: fmt(s.avg_order_value),  cls: '',      trend: '' },
+    { label: 'Total Shipping',  value: fmt(s.total_shipping),   cls: '',      trend: '' },
+    { label: 'Shipping Rate',   value: shippingRate,             cls: '',      trend: '' },
     { label: 'Commission Rate', value: commRate,                 cls: '',      trend: '' },
     { label: 'Commission Paid', value: fmt(s.total_commission), cls: '',      trend: '' },
   ];
   document.getElementById('kpi-grid').innerHTML = kpis.map(k =>
     `<div class="kpi"><div class="kpi-label">${k.label}</div><div class="kpi-value ${k.cls}">${k.value}</div>${k.trend || ''}</div>`
   ).join('');
+
+  const purchaseKpiEl = document.getElementById('overview-purchase-kpis');
+  if (purchaseKpiEl) {
+    const ps = purchaseData?.summary || {};
+    if ((ps.total_purchases || 0) > 0) {
+      const pp = purchaseData?.prevSummary || {};
+      const cardCost = ps.avg_card_cost != null ? fmt(ps.avg_card_cost) : '–';
+      const purchaseKpis = [
+        { label: 'Total Spent',    value: fmt(ps.total_spent),        cls: 'gold', trend: trendHtml(ps.total_spent,     pp.total_spent) },
+        { label: 'Purchases',      value: fmtNum(ps.total_purchases), cls: '',     trend: trendHtml(ps.total_purchases, pp.total_purchases) },
+        { label: 'Cards Bought',   value: fmtNum(ps.total_cards),     cls: '',     trend: trendHtml(ps.total_cards,     pp.total_cards) },
+        { label: 'Unique Sellers', value: fmtNum(ps.unique_sellers),  cls: 'blue', trend: '' },
+        { label: 'Avg Purchase',   value: fmt(ps.avg_purchase_value), cls: '',     trend: '' },
+        { label: 'Avg Card Cost',  value: cardCost,                   cls: '',     trend: '' },
+      ];
+      purchaseKpiEl.innerHTML = purchaseKpis.map(k =>
+        `<div class="kpi"><div class="kpi-label">${k.label}</div><div class="kpi-value ${k.cls}">${k.value}</div>${k.trend || ''}</div>`
+      ).join('');
+    } else {
+      purchaseKpiEl.innerHTML = '<div class="dim" style="font-size:12px">No purchase data yet.</div>';
+    }
+  }
 
   if (d.revenueByDay?.length) {
     lineChart('chart-revenue-time', d.revenueByDay.map(r => r.day), d.revenueByDay.map(r => r.revenue));
@@ -71,6 +100,29 @@ export function renderDashboard(d) {
     doughnutChart('chart-rarity', d.byRarity.map(r => r.rarity), d.byRarity.map(r => r.revenue),
       ['#e8752a', '#c9a227', '#aab8c8', '#9aa0a8', '#3d8ef0']);
   }
+
+  /* ──── PURCHASE GRAPHS ──── */
+  if (purchaseData?.spendByDay?.length) {
+    lineChart('chart-purchase-time', purchaseData.spendByDay.map(r => r.day), purchaseData.spendByDay.map(r => r.amount_spent));
+  }
+  if (purchaseData?.spendByMonth?.length) {
+    barChart('chart-purchase-monthly', purchaseData.spendByMonth.map(r => r.month), [
+      { label: 'Spent',  data: purchaseData.spendByMonth.map(r => r.amount_spent), backgroundColor: '#3d8ef099', borderColor: '#3d8ef0', borderWidth: 1 },
+      { label: 'Fees',   data: purchaseData.spendByMonth.map(r => r.fees || 0),     backgroundColor: '#e74c3c66', borderColor: '#e74c3c', borderWidth: 1 },
+    ], { legend: { display: true, labels: { color: '#6b7a94' } } });
+  }
+  if (purchaseData?.bySeller?.length) {
+    hbarChart('chart-purchase-sellers', purchaseData.bySeller.slice(0, 8).map(r => r.seller_name || r.seller_username), purchaseData.bySeller.slice(0, 8).map(r => r.amount_spent), '#c9a227');
+  }
+
+  const purchaseFoil   = purchaseData?.foilVsNormal?.find(r =>  r.is_foil) || {};
+  const purchaseNormal = purchaseData?.foilVsNormal?.find(r => !r.is_foil) || {};
+  doughnutChart('chart-purchase-foil', ['Foil', 'Normal'], [purchaseFoil.amount_spent || 0, purchaseNormal.amount_spent || 0], ['#7ecfdd', '#3d3d5a']);
+  if (purchaseData?.byRarity?.length) {
+    doughnutChart('chart-purchase-rarity', purchaseData.byRarity.map(r => r.rarity), purchaseData.byRarity.map(r => r.amount_spent),
+      ['#e8752a', '#c9a227', '#aab8c8', '#9aa0a8', '#3d8ef0']);
+  }
+
   if (d.byLanguage?.length) {
     hbarChart('chart-language', d.byLanguage.map(r => r.language), d.byLanguage.map(r => r.revenue), '#9b59b6');
   }
@@ -134,6 +186,24 @@ export function renderOrdersPage(orders) {
       }
     });
   });
+}
+/* ─── Top cards search & pagination ───────────────────────────────────── */
+
+document.getElementById('top-cards-search').addEventListener('input', () => {
+  state.topCardsPage = 1;
+  if (state.currentData) { renderTopCardsPage(state.topCardsDisplayBase || state.currentData.topCards || []); }
+});
+document.getElementById('top-cards-prev').addEventListener('click', () => {
+  state.topCardsPage--;
+  if (state.currentData) { renderTopCardsPage(state.topCardsDisplayBase || state.currentData.topCards || []); }
+});
+document.getElementById('top-cards-next').addEventListener('click', () => {
+  state.topCardsPage++;
+  if (state.currentData) { renderTopCardsPage(state.topCardsDisplayBase || state.currentData.topCards || []); }
+});
+
+function renderTopCardsPage(cards) {
+  renderTopCardsRows(cards);
 }
 
 /* ─── Buyer detail modal ─────────────────────────────────────────────────── */
