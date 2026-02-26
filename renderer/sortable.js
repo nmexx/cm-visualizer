@@ -71,10 +71,18 @@ export class SortableTable {
     this.renderFn(sortArray(this.getDataFn(), key, type, this.sortDir));
   }
 
-  /** Reset visual indicators and internal sort state (call when source data reloads). */
+  /** Reset visual indicators and internal sort state (call when table structure changes). */
   reset() {
     this.sortCol = -1;
     this.sortDir = 'asc';
+    const table = document.getElementById(this.tableId);
+    if (table) {
+      table.querySelectorAll('thead th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+    }
+  }
+
+  /** Clear visual sort indicators only, preserving internal sort state (call when data reloads). */
+  clearVisualsOnly() {
     const table = document.getElementById(this.tableId);
     if (table) {
       table.querySelectorAll('thead th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));

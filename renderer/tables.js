@@ -296,7 +296,7 @@ export const stInventory = new SortableTable('table-inventory',
    { key: 'estimated_value', type: 'num' }, { key: 'market_price', type: 'num' },
    { key: 'market_value', type: 'num' }],
   sorted => { state.sortedInventory = sorted; renderInventoryRows(sorted); },
-  () => state.analyticsData?.inventory || []);
+  () => state.sortedInventory || state.analyticsData?.inventory?.items || []);
 
 export const stRepeatBuyers = new SortableTable('table-repeat-buyers',
   [{ key: 'buyer', type: 'str' }, { key: 'order_count', type: 'num' },

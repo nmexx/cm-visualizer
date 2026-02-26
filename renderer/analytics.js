@@ -13,8 +13,10 @@ import {
 /* ─── Load & render ──────────────────────────────────────────────────────── */
 
 export async function loadAnalyticsData() {
-  stPnl?.reset(); stTimeToSell?.reset(); stInventory?.reset();
-  stRepeatBuyers?.reset(); stSetROI?.reset(); stFoilPremium?.reset();
+  // Clear visual sort indicators but preserve internal sort state
+  // so that when new data comes in, clicking a column will apply the sort to the new data
+  stPnl?.clearVisualsOnly(); stTimeToSell?.clearVisualsOnly(); stInventory?.clearVisualsOnly();
+  stRepeatBuyers?.clearVisualsOnly(); stSetROI?.clearVisualsOnly(); stFoilPremium?.clearVisualsOnly();
   const data = await window.mtg.getAnalytics(buildFilters());
   renderAnalytics(data);
 }
