@@ -127,6 +127,19 @@ export function renderTimeToSellRows(arr) {
 export function renderInventoryRows(arr) {
   const searchTerm = (document.getElementById('inventory-search')?.value || '').toLowerCase();
   const filtered   = searchTerm ? arr.filter(r => r.card_name.toLowerCase().includes(searchTerm)) : arr;
+  
+  // Show pagination info
+  const inventoryInfo = state.analyticsData?.inventory;
+  const pageCount = inventoryInfo?.pageCount || 1;
+  const currentPage = inventoryInfo?.page || 1;
+  const pagingElem = document.getElementById('inventory-paging');
+  if (pagingElem) {
+    pagingElem.style.display = pageCount > 1 ? 'block' : 'none';
+    pagingElem.innerHTML = pageCount > 1 
+      ? `Page ${currentPage} of ${pageCount} (${inventoryInfo?.totalCount || 0} total cards)`
+      : '';
+  }
+  
   const tbody = document.querySelector('#table-inventory tbody');
   if (!tbody) { return; }
   tbody.innerHTML = filtered.map(r => {
@@ -184,7 +197,7 @@ export function renderFoilPremiumRows(arr) {
 
 /* ─── ManaBox table ──────────────────────────────────────────────────────── */
 
-export function renderManaboxRows(arr) {
+export function renderManaboxRows(arr, paginationInfo = null) {
   const searchTerm = (document.getElementById('manabox-search')?.value || '').toLowerCase();
   const filtered   = searchTerm
     ? arr.filter(r => r.card_name.toLowerCase().includes(searchTerm) ||
@@ -196,6 +209,15 @@ export function renderManaboxRows(arr) {
   const wrapEl  = document.getElementById('manabox-table-wrap');
   if (emptyEl) emptyEl.style.display = filtered.length ? 'none'  : 'block';
   if (wrapEl)  wrapEl.style.display  = filtered.length ? 'block' : 'none';
+
+  // Show pagination info
+  const pagingElem = document.getElementById('manabox-paging');
+  if (pagingElem && paginationInfo) {
+    pagingElem.style.display = paginationInfo.pageCount > 1 ? 'block' : 'none';
+    pagingElem.innerHTML = paginationInfo.pageCount > 1 
+      ? `Page ${paginationInfo.page} of ${paginationInfo.pageCount} (${paginationInfo.totalCount} total cards)`
+      : '';
+  }
 
   const tbody = document.querySelector('#table-manabox tbody');
   if (!tbody) { return; }

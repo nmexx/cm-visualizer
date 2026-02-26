@@ -200,15 +200,33 @@ function register(ctx) {
     }
   });
 
-  // ─── Get ManaBox inventory list ────────────────────────────────────────────
-  ipcMain.handle(CH.GET_INVENTORY_LIST, async () => {
-    return db.prepare(`
+  // ─── Get ManaBox inventory list (paginated) ───────────────────────────────
+  ipcMain.handle(CH.GET_INVENTORY_LIST, async (_, { page = 1, pageSize = 1000 } = {}) => {
+    const p = Math.max(1, parseInt(page, 10));
+    const ps = Math.max(100, Math.min(5000, parseInt(pageSize, 10))); // Clamp to 100-5000
+    const offset = (p - 1) * ps;
+    
+    // Get total count
+    const countResult = db.prepare('SELECT COUNT(*) AS total FROM manabox_inventory').get();
+    const totalCount = countResult?.total || 0;
+    
+    // Get paginated items
+    const items = db.prepare(`
       SELECT card_name, set_code, set_name, collector_num, is_foil, rarity,
              quantity, manabox_id, scryfall_id, purchase_price,
              condition, language, purchase_currency, source_file
       FROM manabox_inventory
       ORDER BY card_name ASC
-    `).all();
+      LIMIT ? OFFSET ?
+    `).all(ps, offset);
+    
+    return {
+      items,
+      page: p,
+      pageSize: ps,
+      pageCount: Math.ceil(totalCount / ps),
+      totalCount,
+    };
   });
 
   // ─── Export CSV ────────────────────────────────────────────────────────────

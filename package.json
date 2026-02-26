@@ -1,6 +1,6 @@
 {
   "name": "mtg-dashboard",
-  "version": "1.8.7",
+  "version": "1.8.8",
   "author": "nmexx",
   "description": "MTG Cardmarket Sales Dashboard",
   "main": "main.js",

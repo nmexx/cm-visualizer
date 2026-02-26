@@ -81,18 +81,25 @@ function register(ctx) {
     const dateFrom  = sanitizeDate(filters?.dateFrom) ?? null;
     const dateTo    = sanitizeDate(filters?.dateTo)   ?? null;
     const dateToEnd = dateTo ? dateTo + ' 23:59:59'   : null;
+    const inventoryPage = Math.max(1, parseInt(filters?.inventoryPage || 1, 10));
+    const inventoryPageSize = 1000; // Paginate by 1000 items per page
 
     const soldItems      = stmtSoldItems.all(dateFrom, dateToEnd);
     const boughtItems    = stmtBoughtItems.all(dateFrom, dateToEnd);
     const allOrders      = stmtAllOrders.all(dateFrom, dateToEnd);
-    // Always use full history for inventory / time-to-sell
-    const allSoldItems   = stmtAllSold.all();
-    const allBoughtItems = stmtAllBought.all();
+    // For inventory: use date-filtered data when available, fallback to full history
+    const allSoldItems   = dateToEnd ? stmtSoldItems.all(dateFrom, dateToEnd) : stmtAllSold.all();
+    const allBoughtItems = dateToEnd ? stmtBoughtItems.all(dateFrom, dateToEnd) : stmtAllBought.all();
 
-    const inventoryItems = enrichInventoryWithMarketPrices(
+    const allInventoryItems = enrichInventoryWithMarketPrices(
       computeInventory(allBoughtItems, allSoldItems), priceGuideCache
     );
-    const inventoryTotalValue = inventoryItems.reduce((s, r) => s + (r.estimated_value || 0), 0);
+    const inventoryTotalValue = allInventoryItems.reduce((s, r) => s + (r.estimated_value || 0), 0);
+    
+    // Paginate inventory for large datasets (1000 items per page)
+    const inventoryStart = (inventoryPage - 1) * inventoryPageSize;
+    const inventoryItems = allInventoryItems.slice(inventoryStart, inventoryStart + inventoryPageSize);
+    const inventoryPageCount = Math.ceil(allInventoryItems.length / inventoryPageSize);
 
     // Revenue vs cost by month for the bar chart
     const rvcMap = new Map();
@@ -112,7 +119,14 @@ function register(ctx) {
 
     return {
       pnl:                 computeProfitLoss(soldItems, boughtItems),
-      inventory:           { items: inventoryItems, totalValue: inventoryTotalValue },
+      inventory: {
+        items:      inventoryItems,
+        page:       inventoryPage,
+        pageSize:   inventoryPageSize,
+        pageCount:  inventoryPageCount,
+        totalCount: allInventoryItems.length,
+        totalValue: inventoryTotalValue,
+      },
       repeatBuyers:        computeRepeatBuyers(allOrders),
       setROI:              computeSetROI(allSoldItems, allBoughtItems),
       foilPremium:         computeFoilPremium(soldItems),
