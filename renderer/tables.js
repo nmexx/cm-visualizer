@@ -20,7 +20,7 @@ export function renderTopCardsRows(arr) {
   document.querySelector('#table-top-cards tbody').innerHTML = arr.map((c, i) => `
     <tr>
       <td class="dim">${i + 1}</td>
-      <td data-card-name="${esc(c.card_name)}">${esc(c.card_name)}</td>
+      <td data-card-name="${esc(c.card_name)}" data-set-name="${esc(c.set_name)}">${esc(c.card_name)}</td>
       <td class="dim">${esc(c.set_name)}</td>
       <td>${rarityBadge(c.rarity)}</td>
       <td class="mono">${fmtNum(c.qty_sold)}</td>
@@ -77,7 +77,7 @@ export function renderBoughtCardsRows(arr) {
   document.querySelector('#table-bought-cards tbody').innerHTML = arr.map((c, i) => `
     <tr>
       <td class="dim">${i + 1}</td>
-      <td data-card-name="${esc(c.card_name)}">${esc(c.card_name)}</td>
+      <td data-card-name="${esc(c.card_name)}" data-set-name="${esc(c.set_name)}">${esc(c.card_name)}</td>
       <td class="dim">${esc(c.set_name)}</td>
       <td>${rarityBadge(c.rarity)}</td>
       <td class="mono">${fmtNum(c.qty_bought)}</td>
@@ -107,7 +107,7 @@ export function renderPnlRows(arr) {
   if (!tbody) { return; }
   tbody.innerHTML = arr.map(r => `
     <tr>
-      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
+      <td data-card-name="${esc(r.card_name)}" data-set-name="${esc(r.set_name)}">${esc(r.card_name)}</td>
       <td>${esc(r.set_name || '—')}</td>
       <td>${r.qty_sold || 0}</td>
       <td>${fmt(r.total_revenue)}</td>
@@ -146,7 +146,7 @@ export function renderTimeToSellRows(arr) {
     const dv  = r.days_to_sell;
     const cls = dv === null ? '' : dv < 14 ? 'days-fast' : dv <= 60 ? 'days-medium' : 'days-slow';
     return `<tr>
-      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
+      <td data-card-name="${esc(r.card_name)}" data-set-name="${esc(r.set_name)}">${esc(r.card_name)}</td>
       <td>${esc(r.set_name || '—')}</td>
       <td><span class="days-badge ${cls}">${dv === null ? '—' : dv + 'd'}</span></td>
     </tr>`;
@@ -174,7 +174,7 @@ export function renderInventoryRows(arr) {
   tbody.innerHTML = filtered.map(r => {
     const hasMkt = r.market_price != null;
     return `<tr>
-      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
+      <td data-card-name="${esc(r.card_name)}" data-set-name="${esc(r.set_name)}">${esc(r.card_name)}</td>
       <td>${esc(r.set_name || '—')}</td>
       <td>${r.qty_bought || 0}</td>
       <td>${r.qty_sold || 0}</td>
@@ -217,7 +217,7 @@ export function renderFoilPremiumRows(arr) {
   if (!tbody) { return; }
   tbody.innerHTML = arr.map(r => `
     <tr>
-      <td data-card-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
+      <td data-card-name="${esc(r.card_name)}" data-set-name="${esc(r.card_name)}">${esc(r.card_name)}</td>
       <td>${fmt(r.avg_normal_price)}</td>
       <td>${fmt(r.avg_foil_price)}</td>
       <td>${r.foil_premium_pct != null ? r.foil_premium_pct.toFixed(1) + '%' : '—'}</td>
@@ -252,7 +252,7 @@ export function renderManaboxRows(arr, paginationInfo = null) {
   if (!tbody) { return; }
   tbody.innerHTML = filtered.map(r => `
     <tr>
-      <td data-card-name="${esc(r.card_name)}" data-scryfall-id="${esc(r.scryfall_id)}">${esc(r.card_name)}</td>
+      <td data-card-name="${esc(r.card_name)}" data-set-name="${esc(r.set_name)}" data-scryfall-id="${esc(r.scryfall_id)}">${esc(r.card_name)}</td>
       <td class="dim">${esc(r.set_name || r.set_code || '—')}</td>
       <td class="mono dim">${r.set_code || ''}</td>
       <td>${r.is_foil ? '<span class="badge badge-uncommon">Foil</span>' : ''}</td>
