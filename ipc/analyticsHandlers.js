@@ -38,6 +38,7 @@ function register(ctx) {
     JOIN orders o ON o.order_id = i.order_id
     WHERE o.date_of_purchase >= COALESCE(?, o.date_of_purchase)
       AND o.date_of_purchase <= COALESCE(?, o.date_of_purchase)
+      AND i.exclude_from_pl = 0
   `);
   const stmtBoughtItems = db.prepare(`
     SELECT i.card_name, i.set_name, i.rarity, i.quantity, i.price, i.is_foil,
@@ -46,6 +47,7 @@ function register(ctx) {
     JOIN purchases p ON p.order_id = i.order_id
     WHERE p.date_of_purchase >= COALESCE(?, p.date_of_purchase)
       AND p.date_of_purchase <= COALESCE(?, p.date_of_purchase)
+      AND i.exclude_from_pl = 0
   `);
   const stmtAllOrders   = db.prepare(`
     SELECT username, buyer_name, merchandise_value, article_count
@@ -149,6 +151,31 @@ function register(ctx) {
       loadPriceGuideIntoCache(priceGuide.path, priceGuideCache);
       settings.set('price_guide_updated_at', createdAt);
       return { ok: true, count, updatedAt: createdAt };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  // ─── Exclude/include cards from P&L ────────────────────────────────────────
+  /**
+   * Mark all purchase_items with the given card_name and set_name as
+   * excluded from (or included in) P&L analytics.
+   *
+   * @param {object} payload
+   * @param {string}  payload.card_name - card name to exclude
+   * @param {string}  payload.set_name  - set name to exclude
+   * @param {boolean} payload.exclude   - true to exclude, false to include
+   * @returns {{ok: boolean, rowsAffected: number} | {ok: false, error: string}}
+   */
+  ipcMain.handle(CH.SET_PURCHASE_ITEMS_EXCLUDE_FROM_PL, async (_, { card_name, set_name, exclude }) => {
+    try {
+      const stmt = db.prepare(`
+        UPDATE purchase_items
+        SET exclude_from_pl = ?
+        WHERE card_name = ? AND set_name = ?
+      `);
+      const result = stmt.run(exclude ? 1 : 0, card_name, set_name);
+      return { ok: true, rowsAffected: result.changes };
     } catch (e) {
       return { ok: false, error: e.message };
     }

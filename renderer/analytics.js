@@ -8,6 +8,7 @@ import {
   renderPnlRows, renderTimeToSellRows, renderInventoryRows,
   renderRepeatBuyersRows, renderSetROIRows, renderFoilPremiumRows,
   stPnl, stTimeToSell, stInventory, stRepeatBuyers, stSetROI, stFoilPremium,
+  setAnalyticsReloadCallback,
 } from './tables.js';
 
 /* ─── Load & render ──────────────────────────────────────────────────────── */
@@ -151,3 +152,6 @@ document.getElementById('btn-export-inventory-xlsx').addEventListener('click', a
   if (r?.ok)  { toast('Exported: ' + r.path.split('\\').pop()); }
   else if (r) { toast(r.message || 'Export failed', 'error'); }
 });
+
+/* ─── Set up reload callback ───────────────────────────────────────────────── */
+setAnalyticsReloadCallback(loadAnalyticsData);

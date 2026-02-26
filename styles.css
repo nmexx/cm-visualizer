@@ -361,6 +361,27 @@ body {
 .data-table .red  { color: var(--red); }
 .data-table .dim  { color: var(--text-dim); font-size: 12px; }
 
+/* Action cells in tables (buttons/controls) */
+.data-table .action-cell { padding: 5px 8px; }
+.btn-exclude-from-pl {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--orange) 50%, transparent);
+  background: transparent;
+  color: var(--orange);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.btn-exclude-from-pl:hover {
+  border-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 15%, transparent);
+  color: var(--orange-light);
+}
+
 /* Rarity badges */
 .badge {
   display: inline-block;

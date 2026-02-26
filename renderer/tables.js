@@ -3,8 +3,15 @@
  * Imported by tab modules which call these directly after data arrives.
  */
 import { state, PAGE_SIZE } from './state.js';
-import { fmt, fmtNum, esc, rarityBadge } from './utils.js';
+import { fmt, fmtNum, esc, rarityBadge, toast } from './utils.js';
 import { SortableTable } from './sortable.js';
+
+// Reference to reload callback - set by analytics.js
+let _analyticsReloadCallback = null;
+
+export function setAnalyticsReloadCallback(cb) {
+  _analyticsReloadCallback = cb;
+}
 
 /* ─── Sales tables ───────────────────────────────────────────────────────── */
 
@@ -107,7 +114,29 @@ export function renderPnlRows(arr) {
       <td>${fmt(r.total_cost)}</td>
       <td class="${(r.profit || 0) >= 0 ? 'profit-pos' : 'profit-neg'}">${fmt(r.profit)}</td>
       <td class="${(r.margin_pct || 0) >= 0 ? 'margin-pos' : 'margin-neg'}">${r.margin_pct != null ? r.margin_pct.toFixed(1) + '%' : '—'}</td>
+      <td class="action-cell"><button class="btn-exclude-from-pl" data-card-name="${esc(r.card_name)}" data-set-name="${esc(r.set_name)}" title="Mark as collection-only (exclude from P&L)">Exclude</button></td>
     </tr>`).join('');
+  
+  // Attach click handlers to exclude buttons
+  document.querySelectorAll('.btn-exclude-from-pl').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const cardName = btn.getAttribute('data-card-name');
+      const setName = btn.getAttribute('data-set-name');
+      const result = await window.mtg.setPurchaseItemsExcludeFromPL({
+        card_name: cardName,
+        set_name: setName,
+        exclude: true
+      });
+      if (result?.ok) {
+        toast(`Excluded "${cardName}" from P&L analytics`, 'info');
+        // Reload analytics data
+        if (_analyticsReloadCallback) { _analyticsReloadCallback(); }
+      } else {
+        toast(`Failed to exclude card: ${result?.error || 'unknown error'}`, 'error');
+      }
+    });
+  });
 }
 
 export function renderTimeToSellRows(arr) {

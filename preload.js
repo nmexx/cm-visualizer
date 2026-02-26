@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('mtg', {
   downloadPriceGuide:   ()        => ipcRenderer.invoke(CH.DOWNLOAD_PRICE_GUIDE),
   // Analytics
   getAnalytics:         filters   => ipcRenderer.invoke(CH.GET_ANALYTICS, filters),
+  setPurchaseItemsExcludeFromPL: payload => ipcRenderer.invoke(CH.SET_PURCHASE_ITEMS_EXCLUDE_FROM_PL, payload),
   // Export
   exportCsv:            type      => ipcRenderer.invoke(CH.EXPORT_CSV, type),
   exportXlsx:           payload   => ipcRenderer.invoke(CH.EXPORT_XLSX, payload),
